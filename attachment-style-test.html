@@ -1,0 +1,436 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Attachment Style Assessment</title>
+<style>
+  :root {
+    --bg: #f6f4f0;
+    --card: #ffffff;
+    --ink: #2b2b33;
+    --muted: #6e6e7a;
+    --accent: #5b6ee1;
+    --accent-soft: #e8ebfc;
+    --secure: #3aa17e;
+    --anxious: #e0913a;
+    --avoidant: #5b8bd4;
+    --fearful: #c25e8a;
+    --radius: 14px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--ink);
+    line-height: 1.55;
+    min-height: 100vh;
+    display: flex;
+    justify-content: center;
+    padding: 24px 16px 64px;
+  }
+  .app { width: 100%; max-width: 640px; }
+  header { text-align: center; margin-bottom: 28px; }
+  header h1 { font-size: 1.7rem; margin-bottom: 6px; }
+  header p { color: var(--muted); font-size: 0.95rem; }
+  .card {
+    background: var(--card);
+    border-radius: var(--radius);
+    padding: 28px;
+    box-shadow: 0 2px 12px rgba(40, 40, 60, 0.07);
+  }
+  /* Progress bar */
+  .progress-wrap { margin-bottom: 22px; }
+  .progress-label { font-size: 0.8rem; color: var(--muted); margin-bottom: 6px; display: flex; justify-content: space-between; }
+  .progress-track { height: 8px; background: #ececf2; border-radius: 99px; overflow: hidden; }
+  .progress-fill { height: 100%; background: var(--accent); border-radius: 99px; width: 0%; transition: width 0.3s ease; }
+  /* Question */
+  .question-text { font-size: 1.15rem; font-weight: 600; margin-bottom: 22px; min-height: 3.2em; }
+  .likert { display: flex; flex-direction: column; gap: 10px; }
+  .likert button {
+    text-align: left;
+    padding: 13px 16px;
+    border: 1.5px solid #e2e2ea;
+    border-radius: 10px;
+    background: #fafafc;
+    font-size: 0.97rem;
+    color: var(--ink);
+    cursor: pointer;
+    transition: border-color 0.15s, background 0.15s, transform 0.05s;
+  }
+  .likert button:hover { border-color: var(--accent); background: var(--accent-soft); }
+  .likert button:active { transform: scale(0.985); }
+  .likert button.selected { border-color: var(--accent); background: var(--accent-soft); font-weight: 600; }
+  .nav-row { display: flex; justify-content: space-between; margin-top: 24px; }
+  .nav-btn {
+    background: none;
+    border: none;
+    color: var(--muted);
+    font-size: 0.9rem;
+    cursor: pointer;
+    padding: 8px 12px;
+    border-radius: 8px;
+  }
+  .nav-btn:hover { background: #f0f0f5; color: var(--ink); }
+  .nav-btn:disabled { opacity: 0.35; cursor: default; }
+  /* Intro & buttons */
+  .primary-btn {
+    display: inline-block;
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    border-radius: 10px;
+    padding: 14px 28px;
+    font-size: 1rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: filter 0.15s, transform 0.05s;
+  }
+  .primary-btn:hover { filter: brightness(1.08); }
+  .primary-btn:active { transform: scale(0.98); }
+  .intro ul { margin: 16px 0 24px 20px; color: var(--muted); font-size: 0.95rem; }
+  .intro li { margin-bottom: 6px; }
+  .disclaimer {
+    margin-top: 20px;
+    font-size: 0.8rem;
+    color: var(--muted);
+    background: #f4f4f8;
+    border-radius: 10px;
+    padding: 12px 14px;
+  }
+  /* Results */
+  .result-style {
+    font-size: 1.5rem;
+    font-weight: 700;
+    margin: 4px 0 14px;
+  }
+  .badge {
+    display: inline-block;
+    font-size: 0.75rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    padding: 4px 10px;
+    border-radius: 99px;
+    color: #fff;
+    margin-bottom: 10px;
+  }
+  .dim { margin: 22px 0; }
+  .dim-label { display: flex; justify-content: space-between; font-size: 0.85rem; margin-bottom: 6px; }
+  .dim-label .score { color: var(--muted); }
+  .dim-track { height: 12px; background: #ececf2; border-radius: 99px; overflow: hidden; }
+  .dim-fill { height: 100%; border-radius: 99px; transition: width 0.8s cubic-bezier(0.22, 1, 0.36, 1); width: 0%; }
+  .dim-fill.anxiety { background: var(--anxious); }
+  .dim-fill.avoidance { background: var(--avoidant); }
+  .result-desc { color: var(--ink); font-size: 0.97rem; margin: 18px 0; }
+  .result-tips { background: #f4f7f4; border-radius: 10px; padding: 16px 18px; font-size: 0.92rem; }
+  .result-tips h3 { font-size: 0.95rem; margin-bottom: 8px; }
+  .result-tips ul { margin-left: 18px; }
+  .result-tips li { margin-bottom: 5px; }
+  .quad-map {
+    margin: 24px auto 8px;
+    display: block;
+  }
+  .restart-row { text-align: center; margin-top: 24px; }
+  .hidden { display: none; }
+  @media (max-width: 480px) {
+    .card { padding: 20px; }
+    .question-text { font-size: 1.05rem; }
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <h1>Attachment Style Assessment</h1>
+    <p>Understand how you relate in close relationships</p>
+  </header>
+
+  <!-- INTRO -->
+  <div class="card intro" id="screen-intro">
+    <p>This 24-question assessment measures two dimensions of adult attachment — <strong>attachment anxiety</strong> (worry about closeness and abandonment) and <strong>attachment avoidance</strong> (discomfort with intimacy and dependence) — and maps you to one of four attachment styles:</p>
+    <ul>
+      <li><strong>Secure</strong> — comfortable with closeness and independence</li>
+      <li><strong>Anxious-Preoccupied</strong> — craves closeness, fears abandonment</li>
+      <li><strong>Dismissive-Avoidant</strong> — values independence, uneasy with intimacy</li>
+      <li><strong>Fearful-Avoidant</strong> — wants closeness but finds it hard to trust</li>
+    </ul>
+    <p style="color: var(--muted); font-size: 0.95rem; margin-bottom: 24px;">Answer based on how you generally feel in close or romantic relationships — there are no right or wrong answers. It takes about 5 minutes.</p>
+    <button class="primary-btn" onclick="startTest()">Start the assessment</button>
+    <div class="disclaimer">
+      This is an educational self-reflection tool inspired by the research-based two-dimension model of adult attachment (Brennan, Clark &amp; Shaver, 1998). It is not a clinical diagnosis. If relationship distress is significantly affecting your life, consider speaking with a licensed therapist.
+    </div>
+  </div>
+
+  <!-- QUESTIONS -->
+  <div class="card hidden" id="screen-quiz">
+    <div class="progress-wrap">
+      <div class="progress-label">
+        <span id="progress-text">Question 1 of 24</span>
+        <span id="progress-pct">0%</span>
+      </div>
+      <div class="progress-track"><div class="progress-fill" id="progress-fill"></div></div>
+    </div>
+    <div class="question-text" id="question-text"></div>
+    <div class="likert" id="likert-options"></div>
+    <div class="nav-row">
+      <button class="nav-btn" id="back-btn" onclick="goBack()">&#8592; Back</button>
+      <span></span>
+    </div>
+  </div>
+
+  <!-- RESULTS -->
+  <div class="card hidden" id="screen-results">
+    <span class="badge" id="result-badge"></span>
+    <div class="result-style" id="result-style"></div>
+
+    <div class="dim">
+      <div class="dim-label"><span>Attachment Anxiety</span><span class="score" id="anxiety-score"></span></div>
+      <div class="dim-track"><div class="dim-fill anxiety" id="anxiety-fill"></div></div>
+    </div>
+    <div class="dim">
+      <div class="dim-label"><span>Attachment Avoidance</span><span class="score" id="avoidance-score"></span></div>
+      <div class="dim-track"><div class="dim-fill avoidance" id="avoidance-fill"></div></div>
+    </div>
+
+    <svg class="quad-map" id="quad-map" width="280" height="280" viewBox="0 0 280 280" role="img" aria-label="Attachment style quadrant map">
+      <rect x="20" y="20" width="120" height="120" fill="#3aa17e22"/>
+      <rect x="140" y="20" width="120" height="120" fill="#5b8bd422"/>
+      <rect x="20" y="140" width="120" height="120" fill="#e0913a22"/>
+      <rect x="140" y="140" width="120" height="120" fill="#c25e8a22"/>
+      <line x1="20" y1="140" x2="260" y2="140" stroke="#bbb" stroke-width="1"/>
+      <line x1="140" y1="20" x2="140" y2="260" stroke="#bbb" stroke-width="1"/>
+      <text x="80" y="75" text-anchor="middle" font-size="11" fill="#3aa17e" font-weight="700">Secure</text>
+      <text x="200" y="68" text-anchor="middle" font-size="11" fill="#5b8bd4" font-weight="700">Dismissive-</text>
+      <text x="200" y="82" text-anchor="middle" font-size="11" fill="#5b8bd4" font-weight="700">Avoidant</text>
+      <text x="80" y="198" text-anchor="middle" font-size="11" fill="#e0913a" font-weight="700">Anxious-</text>
+      <text x="80" y="212" text-anchor="middle" font-size="11" fill="#e0913a" font-weight="700">Preoccupied</text>
+      <text x="200" y="198" text-anchor="middle" font-size="11" fill="#c25e8a" font-weight="700">Fearful-</text>
+      <text x="200" y="212" text-anchor="middle" font-size="11" fill="#c25e8a" font-weight="700">Avoidant</text>
+      <text x="140" y="14" text-anchor="middle" font-size="10" fill="#888">Avoidance &#8594;</text>
+      <text x="12" y="140" text-anchor="middle" font-size="10" fill="#888" transform="rotate(-90 12 140)">Anxiety &#8594;</text>
+      <circle id="quad-dot" cx="140" cy="140" r="7" fill="#2b2b33" stroke="#fff" stroke-width="2.5"/>
+    </svg>
+
+    <p class="result-desc" id="result-desc"></p>
+    <div class="result-tips">
+      <h3>Things that may help</h3>
+      <ul id="result-tips"></ul>
+    </div>
+    <div class="restart-row">
+      <button class="primary-btn" onclick="restart()">Retake the assessment</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// Each item scores one dimension: "anx" (anxiety) or "avo" (avoidance).
+// reverse: true means agreement indicates LOW levels of that dimension.
+const QUESTIONS = [
+  { text: "I worry about being abandoned by people I'm close to.", dim: "anx", reverse: false },
+  { text: "I find it easy to depend on partners or close friends.", dim: "avo", reverse: true },
+  { text: "I worry that romantic partners won't care about me as much as I care about them.", dim: "anx", reverse: false },
+  { text: "I prefer not to show others how I feel deep down.", dim: "avo", reverse: false },
+  { text: "I often need a lot of reassurance that I am loved.", dim: "anx", reverse: false },
+  { text: "I feel comfortable sharing my private thoughts and feelings with a partner.", dim: "avo", reverse: true },
+  { text: "When someone I'm close to is unavailable, I fear they're losing interest in me.", dim: "anx", reverse: false },
+  { text: "I get uncomfortable when someone wants to be very emotionally close to me.", dim: "avo", reverse: false },
+  { text: "I rarely worry about my relationships ending.", dim: "anx", reverse: true },
+  { text: "I find it difficult to allow myself to depend on others.", dim: "avo", reverse: false },
+  { text: "If I can't reach someone I care about, I assume something is wrong between us.", dim: "anx", reverse: false },
+  { text: "I tell the people I'm close to just about everything.", dim: "avo", reverse: true },
+  { text: "My desire to be very close sometimes scares people away.", dim: "anx", reverse: false },
+  { text: "I pull away when a partner starts to get too close.", dim: "avo", reverse: false },
+  { text: "I feel confident that the people I love will be there when I need them.", dim: "anx", reverse: true },
+  { text: "It helps me to turn to the people I'm close to in times of need.", dim: "avo", reverse: true },
+  { text: "I get frustrated when partners aren't around as much as I would like.", dim: "anx", reverse: false },
+  { text: "I prefer to deal with problems on my own rather than ask for support.", dim: "avo", reverse: false },
+  { text: "I sometimes feel that I push people to show more feeling and commitment than they want to.", dim: "anx", reverse: false },
+  { text: "Being depended on by others makes me feel uneasy.", dim: "avo", reverse: false },
+  { text: "I don't often worry about being rejected.", dim: "anx", reverse: true },
+  { text: "I am comfortable being emotionally close to other people.", dim: "avo", reverse: true },
+  { text: "When I'm not in a relationship, I feel somewhat anxious and incomplete.", dim: "anx", reverse: false },
+  { text: "It's important to me to feel self-sufficient rather than rely on a partner.", dim: "avo", reverse: false }
+];
+
+const SCALE = [
+  { label: "Strongly disagree", value: 1 },
+  { label: "Disagree", value: 2 },
+  { label: "Neutral", value: 3 },
+  { label: "Agree", value: 4 },
+  { label: "Strongly agree", value: 5 }
+];
+
+const STYLES = {
+  secure: {
+    name: "Secure",
+    color: "#3aa17e",
+    desc: "You appear comfortable with both intimacy and independence. You can depend on others and let them depend on you without losing your sense of self, and you don't spend much energy worrying about rejection. Conflict feels manageable rather than threatening, which makes it easier to communicate openly and repair after disagreements.",
+    tips: [
+      "Keep investing in open communication — it's your natural strength.",
+      "Notice when partners have different attachment patterns and offer steady reassurance.",
+      "Security isn't fixed; high stress can shift anyone, so keep tending your support network."
+    ]
+  },
+  anxious: {
+    name: "Anxious-Preoccupied",
+    color: "#e0913a",
+    desc: "You appear to deeply value closeness, but worry about whether others will be as committed to you as you are to them. You may be highly attuned to small shifts in a partner's mood or availability, and seek reassurance when you sense distance. This sensitivity can be a strength — you notice things others miss — but it can also create cycles of worry and protest behavior.",
+    tips: [
+      "When anxiety spikes, pause and ask: \"What do I actually know vs. what am I assuming?\"",
+      "Practice self-soothing (breathing, journaling, a walk) before seeking reassurance.",
+      "State needs directly (\"I'd love a check-in text\") instead of testing or hinting.",
+      "Build a fulfilling life outside the relationship — friendships, interests, goals."
+    ]
+  },
+  avoidant: {
+    name: "Dismissive-Avoidant",
+    color: "#5b8bd4",
+    desc: "You appear to prize independence and self-sufficiency, and may feel crowded when relationships demand a lot of emotional closeness. You likely manage stress by handling things on your own, and may downplay your need for connection. The underlying need for closeness is still there — it just feels safer to keep it at arm's length.",
+    tips: [
+      "Experiment with small disclosures — share one feeling before withdrawing.",
+      "When you feel the urge to pull away, name it (\"I need some space, and I'll come back\") rather than going silent.",
+      "Notice that accepting support doesn't erase your competence or independence.",
+      "Schedule connection deliberately if it doesn't come spontaneously."
+    ]
+  },
+  fearful: {
+    name: "Fearful-Avoidant",
+    color: "#c25e8a",
+    desc: "You appear to both long for closeness and feel wary of it — wanting connection while bracing for the possibility of being hurt. This push-pull can show up as getting close quickly and then withdrawing, or trusting and doubting in cycles. It often develops as a sensible adaptation to past relationships that were unpredictable, and it can change with practice and support.",
+    tips: [
+      "Go slowly: build trust in small, repeated, low-stakes steps rather than all-or-nothing leaps.",
+      "When the urge to flee or cling appears, label it: \"This is my attachment alarm, not necessarily reality.\"",
+      "Choose consistent, patient people, and let consistency accumulate as evidence.",
+      "This pattern responds especially well to working with a therapist — consider it an investment, not a last resort."
+    ]
+  }
+};
+
+let current = 0;
+let answers = new Array(QUESTIONS.length).fill(null);
+
+const $ = id => document.getElementById(id);
+
+function startTest() {
+  current = 0;
+  answers = new Array(QUESTIONS.length).fill(null);
+  $("screen-intro").classList.add("hidden");
+  $("screen-results").classList.add("hidden");
+  $("screen-quiz").classList.remove("hidden");
+  renderQuestion();
+}
+
+function renderQuestion() {
+  const q = QUESTIONS[current];
+  $("question-text").textContent = q.text;
+  $("progress-text").textContent = `Question ${current + 1} of ${QUESTIONS.length}`;
+  const pct = Math.round((current / QUESTIONS.length) * 100);
+  $("progress-pct").textContent = pct + "%";
+  $("progress-fill").style.width = pct + "%";
+  $("back-btn").disabled = current === 0;
+
+  const wrap = $("likert-options");
+  wrap.innerHTML = "";
+  SCALE.forEach(opt => {
+    const btn = document.createElement("button");
+    btn.textContent = opt.label;
+    if (answers[current] === opt.value) btn.classList.add("selected");
+    btn.onclick = () => selectAnswer(opt.value);
+    wrap.appendChild(btn);
+  });
+}
+
+function selectAnswer(value) {
+  answers[current] = value;
+  if (current < QUESTIONS.length - 1) {
+    current++;
+    renderQuestion();
+  } else {
+    showResults();
+  }
+}
+
+function goBack() {
+  if (current > 0) {
+    current--;
+    renderQuestion();
+  }
+}
+
+function computeScores() {
+  let anxSum = 0, anxCount = 0, avoSum = 0, avoCount = 0;
+  QUESTIONS.forEach((q, i) => {
+    let v = answers[i];
+    if (v == null) return;
+    if (q.reverse) v = 6 - v;
+    if (q.dim === "anx") { anxSum += v; anxCount++; }
+    else { avoSum += v; avoCount++; }
+  });
+  return {
+    anxiety: anxSum / anxCount,    // 1–5
+    avoidance: avoSum / avoCount   // 1–5
+  };
+}
+
+function classify(anxiety, avoidance) {
+  const MID = 3; // midpoint of the 1–5 scale
+  const highAnx = anxiety >= MID;
+  const highAvo = avoidance >= MID;
+  if (!highAnx && !highAvo) return "secure";
+  if (highAnx && !highAvo) return "anxious";
+  if (!highAnx && highAvo) return "avoidant";
+  return "fearful";
+}
+
+function showResults() {
+  const { anxiety, avoidance } = computeScores();
+  const styleKey = classify(anxiety, avoidance);
+  const style = STYLES[styleKey];
+
+  $("screen-quiz").classList.add("hidden");
+  $("screen-results").classList.remove("hidden");
+
+  $("result-badge").textContent = "Your result";
+  $("result-badge").style.background = style.color;
+  $("result-style").textContent = style.name;
+  $("result-style").style.color = style.color;
+  $("result-desc").textContent = style.desc;
+
+  const tipsEl = $("result-tips");
+  tipsEl.innerHTML = "";
+  style.tips.forEach(t => {
+    const li = document.createElement("li");
+    li.textContent = t;
+    tipsEl.appendChild(li);
+  });
+
+  // Scores shown as x.x / 5, bars as percentage of the 1–5 range
+  const anxPct = ((anxiety - 1) / 4) * 100;
+  const avoPct = ((avoidance - 1) / 4) * 100;
+  $("anxiety-score").textContent = anxiety.toFixed(1) + " / 5";
+  $("avoidance-score").textContent = avoidance.toFixed(1) + " / 5";
+  requestAnimationFrame(() => {
+    $("anxiety-fill").style.width = anxPct + "%";
+    $("avoidance-fill").style.width = avoPct + "%";
+  });
+
+  // Place dot on quadrant map (x = avoidance, y = anxiety)
+  const dotX = 20 + (avoPct / 100) * 240;
+  const dotY = 20 + (anxPct / 100) * 240;
+  const dot = $("quad-dot");
+  dot.setAttribute("cx", dotX);
+  dot.setAttribute("cy", dotY);
+  dot.setAttribute("fill", style.color);
+
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+function restart() {
+  $("screen-results").classList.add("hidden");
+  $("screen-intro").classList.remove("hidden");
+  window.scrollTo({ top: 0 });
+}
+</script>
+</body>
+</html>
