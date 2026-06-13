@@ -46,21 +46,31 @@ python3 -m http.server 8765
 # then visit http://localhost:8765/
 ```
 
-## Deploying the web version (Vercel)
+## The web version (Vercel)
+
+Live at **https://sarah-matchmaking.vercel.app**
 
 The web app is a single static file (`index.html`) with no build step, so it deploys
-zero-config. The easiest path is to connect this GitHub repo to Vercel:
+zero-config. To redeploy after changes:
 
-1. Go to [vercel.com/new](https://vercel.com/new) and import `matthewkope/sarah-matchmaking`.
-2. Framework preset: **Other** · Build command: *(none)* · Output directory: *(leave as the repo root)*.
-3. Deploy. Every push to `main` then re-deploys automatically.
+```bash
+vercel deploy --prod --scope jmattkope-9478s-projects
+```
 
-There's nothing to configure — Vercel serves `index.html` at the site root.
+For automatic deploys on every push, connect the GitHub repo once in the Vercel dashboard
+(Project → Settings → Git → connect `matthewkope/sarah-matchmaking`).
 
 ## Installing the terminal version (anyone)
 
-The terminal program is a single dependency-free Python 3 script, so installing it is one line —
-it downloads the script from this repo into `~/.local/bin/sarah`:
+The terminal program is a single dependency-free Python 3 script. Install it with one line —
+it downloads the script into `~/.local/bin/sarah` (this only downloads and marks it executable;
+it doesn't run anything):
+
+```bash
+curl -fsSL https://sarah-matchmaking.vercel.app/install | sh
+```
+
+Prefer to read it first? Download straight from the repo instead:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/matthewkope/sarah-matchmaking/main/attachment-style-test \

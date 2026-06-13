@@ -6,3 +6,4 @@ profiles.json
 
 # Python bytecode cache
 __pycache__/
+.vercel
