@@ -598,10 +598,43 @@ async function initAuth(){
 async function applySession(session){
   const was = authUser;
   authUser = (session && session.user) || null;
-  if(authUser){ await pullRemote(); }
-  else if(was){ profilesCache = readLocal(); }   // just signed out → back to local
+  if(authUser){
+    const localBefore = readLocal();   // what's saved on this device before we load the cloud
+    await pullRemote();
+    refreshAccountUI();
+    rerenderCurrent();
+    maybeOfferMigration(localBefore);  // offer to add this device's profiles to the account
+    return;
+  }
+  if(was){ profilesCache = readLocal(); }   // just signed out → back to local
   refreshAccountUI();
   rerenderCurrent();
+}
+
+// If this device has saved profiles that aren't in the just-signed-in account,
+// offer to upload them — this is how you move local profiles into an account.
+function maybeOfferMigration(localEntries){
+  if(!localEntries || !localEntries.length) return;
+  const cloudKeys = new Set((profilesCache||[]).map(entryKey));
+  const toMigrate = localEntries.filter(e => !cloudKeys.has(entryKey(e)));
+  if(!toMigrate.length) return;
+  const names = [...new Set(toMigrate.map(e => e.name || "?"))].join(", ");
+  openDialog({
+    title: "Add this device's profiles to your account?",
+    message: toMigrate.length + " saved result(s) on this device (" + names + ") aren't in your account yet. Add them so they sync everywhere?",
+    confirmLabel: "Add to account", cancelLabel: "Not now",
+    onConfirm: async () => {
+      try{
+        const rows = toMigrate.map(e => ({ profile_name: e.name, quiz: e.quiz||"attachment", payload: e }));
+        const { error } = await sb.from("results").upsert(rows, { onConflict:"owner,profile_name,quiz" });
+        if(error) throw error;
+        const keys = new Set((profilesCache||[]).map(entryKey));
+        profilesCache = (profilesCache||[]).concat(toMigrate.filter(e=>!keys.has(entryKey(e))));
+        toast("Added " + toMigrate.length + " result(s) to your account.");
+        rerenderCurrent();
+      }catch(err){ console.error(err); toast("Couldn't add them — try again."); }
+    }
+  });
 }
 async function pullRemote(){
   try{
