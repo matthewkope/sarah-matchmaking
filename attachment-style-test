@@ -12,9 +12,13 @@ Profiles are saved to profiles.json next to this script, in the same JSON
 format the web version exports/imports, so the two can share profiles.
 """
 
+import getpass
 import json
 import os
 import sys
+import time
+import urllib.error
+import urllib.request
 from collections import Counter
 from datetime import datetime
 
@@ -828,6 +832,128 @@ def write_profiles(profiles):
 
 
 # ════════════════════════════════════════════════════════════════════════
+#  CLOUD SYNC  (same Supabase project + table the website uses; the anon key
+#  is public by design and the user's own login + Row-Level Security keep
+#  data private. No secret key is stored anywhere.)
+# ════════════════════════════════════════════════════════════════════════
+SUPABASE_URL = "https://pbevmvhslsdknbmaeenc.supabase.co"
+SUPABASE_ANON = ("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6"
+                 "InBiZXZtdmhzbHNka25ibWFlZW5jIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODEzNzU5NTgs"
+                 "ImV4cCI6MjA5Njk1MTk1OH0.qIMIxSi0C2b74BezDhMttFluPpH6ZOjm1ul3mfEiSZU")
+CONFIG_DIR = os.path.join(os.path.expanduser("~"), ".sarah")
+CREDS_PATH = os.path.join(CONFIG_DIR, "credentials.json")
+
+
+def _api(method, path, token=None, body=None, prefer=None):
+    """Minimal Supabase REST/Auth call. Returns (status_code, parsed_json_or_None)."""
+    data = json.dumps(body).encode() if body is not None else None
+    req = urllib.request.Request(SUPABASE_URL + path, data=data, method=method)
+    req.add_header("apikey", SUPABASE_ANON)
+    req.add_header("Content-Type", "application/json")
+    if token:
+        req.add_header("Authorization", "Bearer " + token)
+    if prefer:
+        req.add_header("Prefer", prefer)
+    try:
+        with urllib.request.urlopen(req, timeout=20) as r:
+            txt = r.read().decode()
+            return r.status, (json.loads(txt) if txt else None)
+    except urllib.error.HTTPError as e:
+        txt = e.read().decode()
+        try:
+            return e.code, json.loads(txt)
+        except ValueError:
+            return e.code, {"message": txt}
+    except Exception as e:  # network/DNS/timeout
+        return 0, {"message": str(e)}
+
+
+def load_creds():
+    try:
+        with open(CREDS_PATH, encoding="utf-8") as f:
+            return json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError, OSError):
+        return None
+
+
+def save_creds(c):
+    os.makedirs(CONFIG_DIR, exist_ok=True)
+    with open(CREDS_PATH, "w", encoding="utf-8") as f:
+        json.dump(c, f)
+    try:
+        os.chmod(CREDS_PATH, 0o600)
+    except OSError:
+        pass
+
+
+def clear_creds():
+    try:
+        os.remove(CREDS_PATH)
+    except OSError:
+        pass
+
+
+def _store_session(data, email_fallback):
+    save_creds({
+        "access_token": data["access_token"],
+        "refresh_token": data.get("refresh_token"),
+        "email": (data.get("user") or {}).get("email", email_fallback),
+        "expires_at": time.time() + data.get("expires_in", 3600),
+    })
+
+
+def cloud_login(email, password):
+    status, data = _api("POST", "/auth/v1/token?grant_type=password",
+                        body={"email": email, "password": password})
+    if status == 200 and data and data.get("access_token"):
+        _store_session(data, email)
+        return True, None
+    msg = (data or {}).get("error_description") or (data or {}).get("msg") \
+        or (data or {}).get("message") or "login failed"
+    return False, msg
+
+
+def cloud_token():
+    """Return a valid access token, refreshing if needed; None if not signed in."""
+    c = load_creds()
+    if not c:
+        return None
+    if c.get("expires_at", 0) - 60 < time.time():
+        status, data = _api("POST", "/auth/v1/token?grant_type=refresh_token",
+                            body={"refresh_token": c.get("refresh_token")})
+        if status == 200 and data and data.get("access_token"):
+            _store_session(data, c.get("email"))
+            return data["access_token"]
+        return None
+    return c.get("access_token")
+
+
+def cloud_email():
+    c = load_creds()
+    return c.get("email") if c else None
+
+
+def cloud_push(entries, token):
+    rows = [{"profile_name": e.get("name"), "quiz": e.get("quiz", "attachment"), "payload": e}
+            for e in entries if e.get("name")]
+    if not rows:
+        return True, 0, None
+    status, data = _api("POST", "/rest/v1/results?on_conflict=owner,profile_name,quiz",
+                        token=token, body=rows,
+                        prefer="resolution=merge-duplicates,return=minimal")
+    if status in (200, 201, 204):
+        return True, len(rows), None
+    return False, 0, (data or {}).get("message", f"HTTP {status}")
+
+
+def cloud_pull(token):
+    status, data = _api("GET", "/rest/v1/results?select=payload", token=token)
+    if status == 200 and isinstance(data, list):
+        return [r.get("payload") for r in data if r.get("payload")], None
+    return None, (data or {}).get("message", f"HTTP {status}")
+
+
+# ════════════════════════════════════════════════════════════════════════
 #  QUIZ FLOW
 # ════════════════════════════════════════════════════════════════════════
 def ask_likert(texts):
@@ -1085,6 +1211,13 @@ def save_profile(result):
     profiles.append(entry)
     write_profiles(profiles)
     print(f"{GREEN}{verb} {quiz_title} for '{name}' → {profiles_path()}{RESET}")
+    token = cloud_token()
+    if token:
+        ok, _, err = cloud_push([entry], token)
+        if ok:
+            print(f"{GREEN}↑ pushed to your cloud account ({cloud_email()}){RESET}")
+        else:
+            print(f"{AMBER}cloud push failed ({err}) — saved locally.{RESET}")
 
 
 QUIZ_KEYS = ["attachment", "love", "bigfive", "darktriad", "mbti", "rice"]
@@ -1279,6 +1412,76 @@ def view_profiles():
 # ════════════════════════════════════════════════════════════════════════
 #  MENU
 # ════════════════════════════════════════════════════════════════════════
+def do_cloud_login():
+    print(f"\n{CYAN}sign in to your Sarah cloud account{RESET}")
+    email = ask_line(f"{DIM}email (blank to cancel):{RESET} ")
+    if not email:
+        print(f"{DIM}cancelled.{RESET}")
+        return
+    try:
+        password = getpass.getpass("password: ")
+    except (EOFError, KeyboardInterrupt):
+        print(f"{DIM}cancelled.{RESET}")
+        return
+    ok, err = cloud_login(email, password)
+    if ok:
+        print(f"{GREEN}signed in as {cloud_email()}{RESET}")
+    else:
+        print(f"{AMBER}sign-in failed: {err}{RESET}")
+
+
+def cloud_menu():
+    while True:
+        token = cloud_token()
+        email = cloud_email()
+        print(f"\n{CYAN}── cloud sync ──{RESET}\n")
+        if token:
+            print(f"{GREEN}signed in as {email}{RESET}")
+            print(f"{DIM}saving a result automatically pushes it to your account.{RESET}\n")
+            print(f"  {AMBER}[U]{RESET} upload — push all local profiles to the cloud")
+            print(f"  {AMBER}[D]{RESET} download — pull cloud profiles into this device")
+            print(f"  {AMBER}[O]{RESET} sign out")
+        else:
+            print(f"{DIM}not signed in — results save locally only.{RESET}\n")
+            print(f"  {AMBER}[I]{RESET} sign in / create an account on the website first")
+        print(f"  {AMBER}[B]{RESET} back")
+        print(f"\n{DIM}choose...{RESET}")
+        ch = getch().lower()
+        if ch == "b":
+            return
+        if not token:
+            if ch == "i":
+                do_cloud_login()
+            continue
+        if ch == "o":
+            clear_creds()
+            print(f"{DIM}signed out.{RESET}")
+        elif ch == "u":
+            ok, n, err = cloud_push(load_profiles(), token)
+            print(f"{GREEN}uploaded {n} result(s) to {email}.{RESET}" if ok
+                  else f"{AMBER}upload failed: {err}{RESET}")
+        elif ch == "d":
+            remote, err = cloud_pull(token)
+            if remote is None:
+                print(f"{AMBER}download failed: {err}{RESET}")
+            else:
+                local = load_profiles()
+                idx = {(p.get("name", "").lower(), p.get("quiz", "attachment")): i
+                       for i, p in enumerate(local)}
+                added = updated = 0
+                for r in remote:
+                    k = (r.get("name", "").lower(), r.get("quiz", "attachment"))
+                    if k in idx:
+                        local[idx[k]] = r
+                        updated += 1
+                    else:
+                        local.append(r)
+                        idx[k] = len(local) - 1
+                        added += 1
+                write_profiles(local)
+                print(f"{GREEN}downloaded — {added} new, {updated} updated.{RESET}")
+
+
 def print_banner():
     print(f"""{CYAN}┌──────────────────────────────────────────────┐
 │      PERSONALITY & RELATIONSHIP QUIZZES      │
@@ -1306,6 +1509,9 @@ def main():
         print(f"  {AMBER}[5]{RESET} Personality Type  {DIM}— 30 q · 4-letter type + identity{RESET}")
         print(f"  {AMBER}[6]{RESET} Rice Purity       {DIM}— 100 q · lighthearted purity score out of 100{RESET}")
         print(f"  {AMBER}[V]{RESET} view saved profiles {DIM}({n} {plural}){RESET}")
+        signed = cloud_email() if cloud_token() else None
+        cloud_label = f"cloud sync {DIM}(signed in as {signed}){RESET}" if signed else f"cloud sync {DIM}(sign in to sync){RESET}"
+        print(f"  {AMBER}[C]{RESET} {cloud_label}")
         print(f"  {AMBER}[Q]{RESET} quit")
         print(f"\n{DIM}choose a quiz...{RESET}")
         ch = getch().lower()
@@ -1323,6 +1529,8 @@ def main():
             run_rice()
         elif ch == "v":
             view_profiles()
+        elif ch == "c":
+            cloud_menu()
         elif ch == "q":
             print(f"{DIM}bye.{RESET}")
             return

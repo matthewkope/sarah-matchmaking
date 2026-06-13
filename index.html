@@ -21,6 +21,12 @@
   header { text-align: center; margin-bottom: 28px; }
   header h1 { font-size: 1.7rem; margin-bottom: 6px; }
   header p { color: var(--muted); font-size: 0.95rem; }
+  #account-bar { margin-top: 10px; font-size: 0.85rem; }
+  .acct-muted { color: var(--muted); }
+  .acct-link { background: none; border: none; color: var(--accent); font-weight: 600; cursor: pointer; font-family: inherit; font-size: 0.85rem; padding: 2px 4px; }
+  .acct-link:hover { text-decoration: underline; }
+  #toast { position: fixed; left: 50%; bottom: 28px; transform: translateX(-50%) translateY(20px); background: var(--ink); color: #fff; padding: 11px 18px; border-radius: 10px; font-size: 0.9rem; box-shadow: 0 8px 28px rgba(0,0,0,.25); opacity: 0; pointer-events: none; transition: opacity .2s, transform .2s; z-index: 50; max-width: 90vw; }
+  #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
   .card { background: var(--card); border-radius: var(--radius); padding: 28px; box-shadow: 0 2px 12px rgba(40,40,60,0.07); }
 
   .quiz-card { display: flex; align-items: center; gap: 16px; width: 100%; text-align: left;
@@ -138,6 +144,7 @@
   <header>
     <h1 id="app-title">Personality &amp; Relationship Quizzes</h1>
     <p id="app-subtitle">Private self-reflection — nothing leaves your device</p>
+    <div id="account-bar"></div>
   </header>
 
   <div class="card" id="screen-home">
@@ -189,6 +196,7 @@
 </div>
 <input type="file" id="file-import" accept="application/json,.json" style="display:none">
 
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
 // ════════════════════════════════════════════════════════════════════
 //  SHARED 5-POINT AGREE/DISAGREE SCALE
@@ -524,18 +532,142 @@ const QUIZ_ORDER = ["attachment","love","bigfive","darktriad","mbti","rice"];
 //  STATE + STORAGE
 // ════════════════════════════════════════════════════════════════════
 let active = null, current = 0, answers = [], lastResult = null;
+let currentScreen = "screen-home";
 const $ = id => document.getElementById(id);
 const SCREENS = ["screen-home","screen-quiz","screen-checklist","screen-results","screen-profiles"];
-function showScreen(id){ SCREENS.forEach(s=>$(s).classList.toggle("hidden", s!==id)); window.scrollTo({top:0,behavior:"smooth"}); }
+function showScreen(id){ currentScreen = id; SCREENS.forEach(s=>$(s).classList.toggle("hidden", s!==id)); window.scrollTo({top:0,behavior:"smooth"}); }
 function setHeader(t,s){ $("app-title").textContent=t; $("app-subtitle").textContent=s; }
+
+// ── Supabase (sign-in + cloud sync). Anon key is public by design; Row-Level
+//    Security keeps each account's data private. Signed out → localStorage. ──
+const SUPABASE_URL = "https://pbevmvhslsdknbmaeenc.supabase.co";
+const SUPABASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBiZXZtdmhzbHNka25ibWFlZW5jIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODEzNzU5NTgsImV4cCI6MjA5Njk1MTk1OH0.qIMIxSi0C2b74BezDhMttFluPpH6ZOjm1ul3mfEiSZU";
+const sb = (window.supabase && window.supabase.createClient)
+  ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON, { auth: { persistSession: true, autoRefreshToken: true } })
+  : null;
+let authUser = null;
 
 const STORE_KEY = "sarah_attachment_profiles";
 const PROFILES_VERSION = 1;
-function loadProfiles(){ try{ const d=JSON.parse(localStorage.getItem(STORE_KEY)||"{}"); return Array.isArray(d.profiles)?d.profiles:[]; }catch(e){ return []; } }
-function writeProfiles(p){ localStorage.setItem(STORE_KEY, JSON.stringify({version:PROFILES_VERSION, profiles:p})); }
+function readLocal(){ try{ const d=JSON.parse(localStorage.getItem(STORE_KEY)||"{}"); return Array.isArray(d.profiles)?d.profiles:[]; }catch(e){ return []; } }
+function writeLocal(p){ localStorage.setItem(STORE_KEY, JSON.stringify({version:PROFILES_VERSION, profiles:p})); }
+
+// In-memory source of truth: mirrors localStorage (signed out) or the cloud (signed in).
+let profilesCache = readLocal();
+const entryKey = e => (e.name||"").toLowerCase()+"|"+(e.quiz||"attachment");
+
+function loadProfiles(){ return profilesCache || []; }
+function writeProfiles(p){
+  const old = profilesCache || [];
+  profilesCache = p;
+  if(authUser && sb){ syncRemote(old, p); } else { writeLocal(p); }
+}
+
+// Push the diff between old and new to Supabase (upsert current, delete removed).
+async function syncRemote(oldArr, newArr){
+  try{
+    if(newArr.length){
+      const rows = newArr.map(e=>({ profile_name:e.name, quiz:e.quiz||"attachment", payload:e }));
+      const { error } = await sb.from("results").upsert(rows, { onConflict:"owner,profile_name,quiz" });
+      if(error) throw error;
+    }
+    const newKeys = new Set(newArr.map(entryKey));
+    for(const e of oldArr.filter(e=>!newKeys.has(entryKey(e)))){
+      const { error } = await sb.from("results").delete().eq("profile_name", e.name).eq("quiz", e.quiz||"attachment");
+      if(error) throw error;
+    }
+  }catch(err){ console.error("cloud sync failed", err); toast("Cloud sync failed — try again when online."); }
+}
 const round2 = x => Math.round(x*100)/100;
 function localStamp(){ const d=new Date(),p=n=>String(n).padStart(2,"0"); return d.getFullYear()+"-"+p(d.getMonth()+1)+"-"+p(d.getDate())+"T"+p(d.getHours())+":"+p(d.getMinutes())+":"+p(d.getSeconds()); }
 function escapeHtml(s){ return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
+
+// ════════════════════════════════════════════════════════════════════
+//  AUTH + CLOUD SYNC
+// ════════════════════════════════════════════════════════════════════
+async function initAuth(){
+  if(!sb){ refreshAccountUI(); return; }
+  const { data } = await sb.auth.getSession();
+  await applySession(data.session);
+  sb.auth.onAuthStateChange((_evt, session)=>{ applySession(session); });
+}
+async function applySession(session){
+  const was = authUser;
+  authUser = (session && session.user) || null;
+  if(authUser){ await pullRemote(); }
+  else if(was){ profilesCache = readLocal(); }   // just signed out → back to local
+  refreshAccountUI();
+  rerenderCurrent();
+}
+async function pullRemote(){
+  try{
+    const { data, error } = await sb.from("results").select("payload").order("updated_at",{ascending:true});
+    if(error) throw error;
+    profilesCache = (data||[]).map(r=>r.payload).filter(Boolean);
+  }catch(err){ console.error("cloud load failed", err); profilesCache=[]; toast("Couldn't load your cloud profiles."); }
+}
+function rerenderCurrent(){
+  if(currentScreen==="screen-home") showHome();
+  else if(currentScreen==="screen-profiles") showProfiles();
+}
+function refreshAccountUI(){
+  const bar=$("account-bar"); if(!bar) return;
+  if(!sb){ bar.innerHTML='<span class="acct-muted">Cloud sync unavailable — results save on this device.</span>'; return; }
+  if(authUser){
+    bar.innerHTML='<span class="acct-muted">☁ Synced as <strong>'+escapeHtml(authUser.email||"you")+'</strong></span> <button class="acct-link" id="acct-signout">Sign out</button>';
+    $("acct-signout").onclick=async()=>{ await sb.auth.signOut(); toast("Signed out."); };
+  } else {
+    bar.innerHTML='<span class="acct-muted">Saving locally on this device.</span> <button class="acct-link" id="acct-signin">Sign in / Sign up to sync</button>';
+    $("acct-signin").onclick=openAuthModal;
+  }
+}
+
+function openAuthModal(){
+  if(!sb) return;
+  let mode="signin"; // or "signup"
+  const backdrop=document.createElement("div"); backdrop.className="modal-backdrop";
+  backdrop.innerHTML='<div class="modal"><h3 id="auth-title">Sign in</h3>'+
+    '<p id="auth-sub">Sign in to sync your profiles across devices and the CLI.</p>'+
+    '<input id="auth-email" type="email" placeholder="you@example.com" autocomplete="username">'+
+    '<input id="auth-pw" type="password" placeholder="password (min 6 chars)" autocomplete="current-password">'+
+    '<div class="modal-error" id="auth-error"></div>'+
+    '<div class="modal-actions"><button class="text-btn" id="auth-toggle">Create an account</button>'+
+    '<button class="primary-btn" id="auth-go">Sign in</button></div></div>';
+  document.body.appendChild(backdrop);
+  const close=()=>backdrop.remove();
+  const setMode=m=>{ mode=m;
+    $("auth-title").textContent = m==="signin"?"Sign in":"Create account";
+    $("auth-go").textContent = m==="signin"?"Sign in":"Create account";
+    $("auth-toggle").textContent = m==="signin"?"Create an account":"I already have an account";
+    $("auth-sub").textContent = m==="signin"?"Sign in to sync your profiles across devices and the CLI.":"Create an account to save your profiles to the cloud and the CLI.";
+    $("auth-error").textContent="";
+  };
+  const go=async()=>{
+    const email=$("auth-email").value.trim(), pw=$("auth-pw").value;
+    if(!email||!pw){ $("auth-error").textContent="Enter an email and password."; return; }
+    $("auth-go").disabled=true; $("auth-error").textContent="Working…";
+    try{
+      const fn = mode==="signin" ? sb.auth.signInWithPassword({email,password:pw}) : sb.auth.signUp({email,password:pw});
+      const { data, error } = await fn;
+      if(error) throw error;
+      if(mode==="signup" && !data.session){ $("auth-error").textContent="Account created — now sign in."; setMode("signin"); $("auth-go").disabled=false; return; }
+      close(); toast(mode==="signin"?"Signed in.":"Account created — synced.");
+    }catch(err){ $("auth-error").textContent=err.message||"Authentication failed."; $("auth-go").disabled=false; }
+  };
+  $("auth-toggle").onclick=()=>setMode(mode==="signin"?"signup":"signin");
+  $("auth-go").onclick=go;
+  backdrop.onclick=e=>{ if(e.target===backdrop) close(); };
+  ["auth-email","auth-pw"].forEach(id=>$(id).addEventListener("keydown",e=>{ if(e.key==="Enter") go(); if(e.key==="Escape") close(); }));
+  $("auth-email").focus();
+}
+
+let toastTimer=null;
+function toast(msg){
+  let t=$("toast"); if(!t){ t=document.createElement("div"); t.id="toast"; document.body.appendChild(t); }
+  t.textContent=msg; t.classList.add("show");
+  if(toastTimer) clearTimeout(toastTimer);
+  toastTimer=setTimeout(()=>t.classList.remove("show"), 3200);
+}
 
 // ════════════════════════════════════════════════════════════════════
 //  HOME
@@ -947,6 +1079,7 @@ document.addEventListener("keydown",(e)=>{
 });
 
 showHome();
+initAuth();
 </script>
 </body>
 </html>

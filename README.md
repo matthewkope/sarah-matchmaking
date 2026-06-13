@@ -1,6 +1,6 @@
 # Sarah Matchmaking
 
-A collection of relationship and personality self-reflection quizzes. They run entirely on your device — no backend, no data leaves your machine. Everything ships in two forms: a self-contained HTML page (a standard web interface) and a runnable terminal program, which share a common saved-profile format.
+A collection of relationship and personality self-reflection quizzes. By default everything runs and saves locally; **optionally sign in** to sync your saved profiles to the cloud (Supabase) so they follow you across devices and between the website and the terminal. Everything ships in two forms: a self-contained HTML page (a standard web interface) and a runnable terminal program, which share a common saved-profile format.
 
 Both the web page ([`index.html`](index.html)) and the terminal program
 ([`attachment-style-test`](attachment-style-test)) open to a **quiz picker** offering six quizzes:
@@ -97,6 +97,24 @@ Both versions share a common JSON format:
 The two files use the **same schema**, so to move profiles between them: drop a web-exported
 `profiles.json` into this folder for the terminal to read, or use the web **Import** button on
 the terminal's `profiles.json`. (`profiles.json` is personal data and is git-ignored.)
+
+## Accounts & cloud sync (Supabase)
+
+Both the website and the CLI can sign in to one account so your profiles sync across devices
+and between the two apps. It's backed by [Supabase](https://supabase.com) (Postgres + Auth):
+
+- **Website:** the account bar under the title → *Sign in / Sign up*. While signed in, every
+  save writes to your account and your profiles load on any device. Signed out, it stays local.
+- **CLI:** menu option **[C] cloud sync** → sign in. After that, saving a result **auto-pushes**
+  it to your account; **[U]** uploads all local profiles and **[D]** downloads cloud ones. The
+  CLI stores its login token in `~/.sarah/credentials.json` (chmod 600).
+- **Privacy:** data is per-account and protected by Postgres **Row-Level Security** — you only
+  ever see your own rows. The app uses the public **anon** key (safe to ship); the secret
+  `service_role` key is never used by any client.
+
+**Backend setup** (one time, already done for the deployed app): create a Supabase project, run
+[`supabase-setup.sql`](supabase-setup.sql) in its SQL editor, enable Email auth, and put the
+project URL + anon key into `index.html` (web) and the top of `attachment-style-test` (CLI).
 
 ## Future Plans
 
