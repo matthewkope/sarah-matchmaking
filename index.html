@@ -1,0 +1,952 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Relationship & Personality Quizzes</title>
+<style>
+  :root {
+    --bg: #f6f4f0; --card: #ffffff; --ink: #2b2b33; --muted: #6e6e7a; --line: #e7e7ee;
+    --accent: #5b6ee1; --accent-soft: #e8ebfc;
+    --c1: #3aa17e; --c2: #e0913a; --c3: #5b8bd4; --c4: #c25e8a; --c5: #8b5cf6;
+    --radius: 14px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg); color: var(--ink); line-height: 1.55; min-height: 100vh;
+    display: flex; justify-content: center; padding: 24px 16px 64px;
+  }
+  .app { width: 100%; max-width: 640px; }
+  header { text-align: center; margin-bottom: 28px; }
+  header h1 { font-size: 1.7rem; margin-bottom: 6px; }
+  header p { color: var(--muted); font-size: 0.95rem; }
+  .card { background: var(--card); border-radius: var(--radius); padding: 28px; box-shadow: 0 2px 12px rgba(40,40,60,0.07); }
+
+  .quiz-card { display: flex; align-items: center; gap: 16px; width: 100%; text-align: left;
+    border: 1.5px solid var(--line); border-radius: 12px; background: #fafafc; padding: 16px 18px; margin-bottom: 12px;
+    cursor: pointer; transition: border-color .15s, background .15s, transform .05s; color: var(--ink); font-family: inherit; }
+  .quiz-card:hover { border-color: var(--accent); background: var(--accent-soft); }
+  .quiz-card:active { transform: scale(.992); }
+  .quiz-emoji { font-size: 1.7rem; flex: none; width: 2rem; text-align: center; }
+  .quiz-card h3 { font-size: 1.05rem; margin-bottom: 2px; }
+  .quiz-card p { color: var(--muted); font-size: 0.85rem; }
+  .home-tools { display: flex; justify-content: center; margin-top: 10px; }
+
+  .progress-wrap { margin-bottom: 22px; }
+  .progress-label { font-size: 0.8rem; color: var(--muted); margin-bottom: 6px; display: flex; justify-content: space-between; }
+  .progress-track { height: 8px; background: #ececf2; border-radius: 99px; overflow: hidden; }
+  .progress-fill { height: 100%; background: var(--accent); border-radius: 99px; width: 0%; transition: width .3s ease; }
+
+  .question-text { font-size: 1.15rem; font-weight: 600; margin-bottom: 22px; min-height: 2.4em; }
+  .likert { display: flex; flex-direction: column; gap: 10px; }
+  .likert button { display: flex; align-items: center; gap: 12px; text-align: left; padding: 13px 16px;
+    border: 1.5px solid #e2e2ea; border-radius: 10px; background: #fafafc; font-size: 0.97rem; color: var(--ink);
+    cursor: pointer; transition: border-color .15s, background .15s, transform .05s; font-family: inherit; }
+  .likert button:hover { border-color: var(--accent); background: var(--accent-soft); }
+  .likert button:active { transform: scale(.985); }
+  .likert button.selected { border-color: var(--accent); background: var(--accent-soft); font-weight: 600; }
+  .likert .num { flex: none; width: 26px; height: 26px; display: grid; place-items: center; border-radius: 7px;
+    background: #ececf2; color: var(--muted); font-size: 0.82rem; font-weight: 700; }
+  .likert button:hover .num, .likert button.selected .num { background: var(--accent); color: #fff; }
+
+  .nav-row { display: flex; justify-content: space-between; align-items: center; margin-top: 24px; }
+  .nav-btn { background: none; border: none; color: var(--muted); font-size: 0.9rem; cursor: pointer; padding: 8px 12px; border-radius: 8px; }
+  .nav-btn:hover { background: #f0f0f5; color: var(--ink); }
+  .nav-btn:disabled { opacity: .35; cursor: default; }
+  .nav-hint { font-size: 0.8rem; color: var(--muted); }
+
+  .btn-row { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 24px; }
+  .primary-btn { background: var(--accent); color: #fff; border: none; border-radius: 10px; padding: 13px 24px; font-size: 1rem; font-weight: 600; cursor: pointer; transition: filter .15s, transform .05s; font-family: inherit; }
+  .primary-btn:hover { filter: brightness(1.08); } .primary-btn:active { transform: scale(.98); }
+  .ghost-btn { background: #fff; color: var(--accent); border: 1.5px solid var(--accent); border-radius: 10px; padding: 12px 20px; font-size: 0.95rem; font-weight: 600; cursor: pointer; transition: background .15s; font-family: inherit; }
+  .ghost-btn:hover { background: var(--accent-soft); }
+  .danger-btn { background: var(--c4); color: #fff; border: none; border-radius: 10px; padding: 13px 24px; font-size: 1rem; font-weight: 600; cursor: pointer; font-family: inherit; }
+  .danger-btn:hover { filter: brightness(1.06); }
+  .text-btn { background: none; border: none; color: var(--muted); font-size: 0.95rem; cursor: pointer; padding: 13px 8px; font-family: inherit; }
+  .text-btn:hover { color: var(--ink); text-decoration: underline; }
+
+  .disclaimer { margin-top: 20px; font-size: 0.8rem; color: var(--muted); background: #f4f4f8; border-radius: 10px; padding: 12px 14px; }
+
+  .result-style { font-size: 1.5rem; font-weight: 700; margin: 4px 0 6px; }
+  .result-sub { color: var(--muted); font-size: 0.95rem; margin-bottom: 8px; }
+  .badge { display: inline-block; font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; padding: 4px 10px; border-radius: 99px; color: #fff; margin-bottom: 10px; }
+  .dim { margin: 14px 0; }
+  .dim-label { display: flex; justify-content: space-between; font-size: 0.85rem; margin-bottom: 6px; }
+  .dim-label .score { color: var(--muted); }
+  .dim-track { height: 12px; background: #ececf2; border-radius: 99px; overflow: hidden; }
+  .dim-fill { height: 100%; border-radius: 99px; transition: width .8s cubic-bezier(.22,1,.36,1); width: 0%; }
+  .result-desc { color: var(--ink); font-size: 0.97rem; margin: 18px 0; }
+  .result-tips { background: #f4f7f4; border-radius: 10px; padding: 16px 18px; font-size: 0.92rem; }
+  .result-tips h3 { font-size: 0.95rem; margin-bottom: 8px; } .result-tips ul { margin-left: 18px; } .result-tips li { margin-bottom: 5px; }
+  .quad-map { margin: 24px auto 8px; display: block; }
+  .typecode { font-size: 2.4rem; font-weight: 800; letter-spacing: .04em; margin: 4px 0; }
+  .saved-note { margin-top: 16px; font-size: 0.9rem; color: var(--c1); background: #eef7f2; border-radius: 10px; padding: 10px 14px; }
+  .mini-note { font-size: 0.8rem; color: var(--muted); margin-top: 14px; }
+
+  /* Rice Purity checklist */
+  .check-row { display: flex; gap: 11px; align-items: flex-start; padding: 9px 4px; border-bottom: 1px solid var(--line); cursor: pointer; font-size: 0.92rem; }
+  .check-row:hover { background: #fafafc; }
+  .check-num { flex: none; width: 1.8rem; color: var(--muted); font-size: 0.8rem; text-align: right; }
+  .check-box { flex: none; width: 20px; height: 20px; border: 1.5px solid #cfcfda; border-radius: 5px; margin-top: 1px; display: grid; place-items: center; color: #fff; font-size: 0.8rem; }
+  .check-row.checked .check-box { background: var(--accent); border-color: var(--accent); }
+  .check-row.checked .check-text { color: var(--muted); }
+  .checklist-bar { position: sticky; bottom: 0; background: var(--card); padding-top: 12px; }
+
+  /* Answers review */
+  .answers-list { margin-top: 6px; max-height: none; }
+  .ans-row { padding: 9px 0; border-bottom: 1px solid var(--line); font-size: 0.9rem; }
+  .ans-q { color: var(--ink); }
+  .ans-a { color: var(--accent); font-weight: 600; margin-top: 2px; }
+  .ans-a.no { color: var(--muted); font-weight: 500; }
+
+  .section-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+  .section-head h2 { font-size: 1.2rem; }
+  .empty { color: var(--muted); text-align: center; padding: 28px 8px; }
+  .person { border: 1.5px solid var(--line); border-radius: 12px; padding: 14px 16px; margin-bottom: 14px; }
+  .person-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+  .person-name { font-weight: 700; font-size: 1.05rem; }
+  .person-del { background: none; border: none; color: var(--muted); font-size: 0.8rem; cursor: pointer; }
+  .person-del:hover { color: var(--c4); text-decoration: underline; }
+  .res-row { display: flex; align-items: center; gap: 12px; padding: 9px 2px; border-top: 1px solid var(--line); }
+  .res-main { flex: 1; min-width: 0; cursor: pointer; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .res-main:hover .res-label { text-decoration: underline; }
+  .res-label { font-size: 0.92rem; }
+  .tag { display: inline-block; font-size: 0.66rem; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; padding: 2px 7px; border-radius: 6px; color: #fff; }
+  .pill { display: inline-block; font-size: 0.72rem; font-weight: 700; padding: 2px 9px; border-radius: 99px; color: #fff; }
+  .res-del { flex: none; background: none; border: 1px solid var(--line); color: var(--muted); border-radius: 7px; padding: 5px 10px; font-size: 0.8rem; cursor: pointer; }
+  .res-del:hover { border-color: var(--c4); color: var(--c4); }
+  .missing { font-size: 0.85rem; color: var(--muted); margin-top: 10px; }
+  .missing a { color: var(--accent); cursor: pointer; text-decoration: underline; }
+  .tools-row { display: flex; gap: 10px; margin-top: 22px; flex-wrap: wrap; }
+  .tools-row .ghost-btn, .tools-row .primary-btn { padding: 10px 16px; font-size: 0.88rem; }
+
+  .modal-backdrop { position: fixed; inset: 0; background: rgba(30,30,45,.45); display: flex; align-items: center; justify-content: center; padding: 20px; z-index: 10; }
+  .modal { background: var(--card); border-radius: var(--radius); padding: 24px; width: 100%; max-width: 380px; box-shadow: 0 12px 40px rgba(0,0,0,.25); }
+  .modal h3 { font-size: 1.1rem; margin-bottom: 6px; } .modal p { color: var(--muted); font-size: 0.88rem; margin-bottom: 14px; }
+  .modal input { width: 100%; padding: 11px 13px; font-size: 1rem; border: 1.5px solid var(--line); border-radius: 10px; margin-bottom: 8px; color: var(--ink); font-family: inherit; }
+  .modal input:focus { outline: none; border-color: var(--accent); }
+  .modal .modal-error { color: var(--c4); font-size: 0.82rem; min-height: 1.1em; margin-bottom: 8px; }
+  .modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 6px; }
+
+  .hidden { display: none; }
+  @media (max-width: 480px) { .card { padding: 20px; } .question-text { font-size: 1.05rem; } .typecode { font-size: 2rem; } }
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <h1 id="app-title">Personality &amp; Relationship Quizzes</h1>
+    <p id="app-subtitle">Private self-reflection — nothing leaves your device</p>
+  </header>
+
+  <div class="card" id="screen-home">
+    <p style="color: var(--muted); margin-bottom: 18px;">Pick a quiz. Save each result onto a named profile to build a full picture of yourself or someone else.</p>
+    <div id="home-cards"></div>
+    <div class="home-tools">
+      <button class="ghost-btn" id="home-profiles-btn" onclick="showProfiles()">Saved profiles</button>
+    </div>
+    <div class="disclaimer" id="home-disclaimer"></div>
+  </div>
+
+  <div class="card hidden" id="screen-quiz">
+    <div class="progress-wrap">
+      <div class="progress-label"><span id="progress-text">Question 1</span><span id="progress-pct">0%</span></div>
+      <div class="progress-track"><div class="progress-fill" id="progress-fill"></div></div>
+    </div>
+    <div class="question-text" id="question-text"></div>
+    <div class="likert" id="options"></div>
+    <div class="nav-row">
+      <button class="nav-btn" id="back-btn" onclick="goBack()">&#8592; Back</button>
+      <span class="nav-hint" id="nav-hint"></span>
+    </div>
+  </div>
+
+  <div class="card hidden" id="screen-checklist">
+    <div class="section-head"><h2 id="checklist-title">Checklist</h2><button class="text-btn" onclick="showHome()">&#8592; Home</button></div>
+    <p class="result-sub" id="checklist-intro"></p>
+    <div id="checklist"></div>
+    <div class="btn-row checklist-bar">
+      <button class="primary-btn" id="checklist-calc">See my score</button>
+      <span class="nav-hint" id="checklist-count"></span>
+    </div>
+  </div>
+
+  <div class="card hidden" id="screen-results">
+    <div id="result-body"></div>
+    <div class="saved-note hidden" id="saved-note"></div>
+    <div class="btn-row" id="result-actions"></div>
+  </div>
+
+  <div class="card hidden" id="screen-profiles">
+    <div class="section-head"><h2>Saved profiles</h2><button class="text-btn" onclick="showHome()">&#8592; Home</button></div>
+    <div id="profiles-list"></div>
+    <div class="tools-row">
+      <button class="ghost-btn" onclick="exportProfiles()">Export to file</button>
+      <button class="ghost-btn" onclick="importProfiles()">Import from file</button>
+    </div>
+  </div>
+</div>
+<input type="file" id="file-import" accept="application/json,.json" style="display:none">
+
+<script>
+// ════════════════════════════════════════════════════════════════════
+//  SHARED 5-POINT AGREE/DISAGREE SCALE
+// ════════════════════════════════════════════════════════════════════
+const SCALE = [
+  { label: "Strongly disagree", value: 1 }, { label: "Disagree", value: 2 },
+  { label: "Neutral", value: 3 }, { label: "Agree", value: 4 }, { label: "Strongly agree", value: 5 }
+];
+
+// ════════════════════════════════════════════════════════════════════
+//  1. ATTACHMENT STYLE
+// ════════════════════════════════════════════════════════════════════
+const ATTACH_QUESTIONS = [
+  { text: "I worry about being abandoned by people I'm close to.", dim: "anx", reverse: false },
+  { text: "I find it easy to depend on partners or close friends.", dim: "avo", reverse: true },
+  { text: "I worry that romantic partners won't care about me as much as I care about them.", dim: "anx", reverse: false },
+  { text: "I prefer not to show others how I feel deep down.", dim: "avo", reverse: false },
+  { text: "I often need a lot of reassurance that I am loved.", dim: "anx", reverse: false },
+  { text: "I feel comfortable sharing my private thoughts and feelings with a partner.", dim: "avo", reverse: true },
+  { text: "When someone I'm close to is unavailable, I fear they're losing interest in me.", dim: "anx", reverse: false },
+  { text: "I get uncomfortable when someone wants to be very emotionally close to me.", dim: "avo", reverse: false },
+  { text: "I rarely worry about my relationships ending.", dim: "anx", reverse: true },
+  { text: "I find it difficult to allow myself to depend on others.", dim: "avo", reverse: false },
+  { text: "If I can't reach someone I care about, I assume something is wrong between us.", dim: "anx", reverse: false },
+  { text: "I tell the people I'm close to just about everything.", dim: "avo", reverse: true },
+  { text: "My desire to be very close sometimes scares people away.", dim: "anx", reverse: false },
+  { text: "I pull away when a partner starts to get too close.", dim: "avo", reverse: false },
+  { text: "I feel confident that the people I love will be there when I need them.", dim: "anx", reverse: true },
+  { text: "It helps me to turn to the people I'm close to in times of need.", dim: "avo", reverse: true },
+  { text: "I get frustrated when partners aren't around as much as I would like.", dim: "anx", reverse: false },
+  { text: "I prefer to deal with problems on my own rather than ask for support.", dim: "avo", reverse: false },
+  { text: "I sometimes feel that I push people to show more feeling and commitment than they want to.", dim: "anx", reverse: false },
+  { text: "Being depended on by others makes me feel uneasy.", dim: "avo", reverse: false },
+  { text: "I don't often worry about being rejected.", dim: "anx", reverse: true },
+  { text: "I am comfortable being emotionally close to other people.", dim: "avo", reverse: true },
+  { text: "When I'm not in a relationship, I feel somewhat anxious and incomplete.", dim: "anx", reverse: false },
+  { text: "It's important to me to feel self-sufficient rather than rely on a partner.", dim: "avo", reverse: false }
+];
+const STYLES = {
+  secure: { name: "Secure", color: "#3aa17e",
+    desc: "You appear comfortable with both intimacy and independence. You can depend on others and let them depend on you without losing your sense of self, and you don't spend much energy worrying about rejection.",
+    tips: ["Keep investing in open communication — it's your natural strength.", "Offer steady reassurance to partners with different attachment patterns.", "Security isn't fixed; under high stress, keep tending your support network."] },
+  anxious: { name: "Anxious-Preoccupied", color: "#e0913a",
+    desc: "You deeply value closeness but worry about whether others are as committed as you are. You're attuned to small shifts in a partner's mood and seek reassurance when you sense distance.",
+    tips: ["When anxiety spikes, ask: what do I know vs. what am I assuming?", "Self-soothe before seeking reassurance.", "State needs directly instead of testing or hinting.", "Build a fulfilling life outside the relationship."] },
+  avoidant: { name: "Dismissive-Avoidant", color: "#5b8bd4",
+    desc: "You prize independence and may feel crowded by too much emotional closeness. You handle stress on your own and may downplay your need for connection — which is still there underneath.",
+    tips: ["Experiment with small disclosures before withdrawing.", "Name your need for space instead of going silent.", "Accepting support doesn't erase your independence.", "Schedule connection deliberately."] },
+  fearful: { name: "Fearful-Avoidant", color: "#c25e8a",
+    desc: "You both long for closeness and feel wary of it, wanting connection while bracing to be hurt. This can look like getting close fast then withdrawing, or cycling between trust and doubt.",
+    tips: ["Go slowly: build trust in small, repeated steps.", "Label the urge to flee or cling as your attachment alarm.", "Choose consistent, patient people.", "This pattern responds especially well to therapy."] }
+};
+function attachCompute(answers) {
+  let aS=0,aN=0,vS=0,vN=0;
+  ATTACH_QUESTIONS.forEach((q,i)=>{ let v=answers[i]; if(v==null) return; if(q.reverse) v=6-v; if(q.dim==="anx"){aS+=v;aN++;}else{vS+=v;vN++;} });
+  return { anxiety:aS/aN, avoidance:vS/vN };
+}
+function attachClassify(a,v){ const ha=a>=3,hv=v>=3; if(!ha&&!hv)return"secure"; if(ha&&!hv)return"anxious"; if(!ha&&hv)return"avoidant"; return"fearful"; }
+
+// ════════════════════════════════════════════════════════════════════
+//  2. LOVE LANGUAGE  (forced-choice; official balanced round-robin)
+// ════════════════════════════════════════════════════════════════════
+const LOVE_KEYS = ["words","quality","gifts","service","touch"];
+const LOVE_NAMES = { words:"Words of Affirmation", quality:"Quality Time", gifts:"Receiving Gifts", service:"Acts of Service", touch:"Physical Touch" };
+const LOVE_COLORS = { words:"#5b6ee1", quality:"#3aa17e", gifts:"#c25e8a", service:"#e0913a", touch:"#8b5cf6" };
+const LOVE_STATEMENTS = {
+  words: ["someone tells me they're proud of me","a partner gives me a heartfelt compliment","I hear the words “I love you” out loud","someone notices my effort and says so","a partner leaves me an encouraging note","someone speaks kindly about me to others","I'm reassured with warm, supportive words","a partner thanks me sincerely for something I did","someone tells me what they appreciate about me","I get a genuine “you did a great job”","a partner encourages me when I'm doubting myself","someone puts their feelings for me into words"],
+  quality: ["a partner sets everything aside to be fully present with me","we spend uninterrupted time together","someone gives me their complete, undistracted attention","we take a walk or a trip together, just the two of us","a partner really listens without checking their phone","we share a long, unhurried conversation","someone makes dedicated time for me in a busy week","we do an activity together that we both enjoy","a partner plans a day for just the two of us","we sit together and talk about how we're really doing","someone chooses to be with me over other plans","we have a regular time that's ours alone"],
+  gifts: ["someone surprises me with a thoughtful gift","a partner brings me a small token that made them think of me","I receive a present chosen just for me","someone remembers something I wanted and gets it for me","a partner gives me a meaningful keepsake","I get a surprise treat for no special reason","someone marks an occasion with a gift","a partner picks up something I mentioned in passing","I receive a gift that shows real thought went into it","someone hands me a little something to brighten my day","a partner saves a memento from a moment we shared","I'm given a present that reflects who I am"],
+  service: ["a partner helps me with a task without being asked","someone takes a chore off my plate","a partner does something practical to make my day easier","someone steps in to help when I'm overwhelmed","a partner handles something so I don't have to","someone sorts out a problem for me","a partner pitches in with the work I'm dreading","someone goes out of their way to lighten my load","a partner runs an errand to help me out","someone cooks or cleans to take care of me","a partner notices what needs doing and just does it","someone helps me finish something I'm stuck on"],
+  touch: ["a partner holds my hand","someone greets me with a warm hug","a partner sits close so we're physically near","I get a reassuring touch on the shoulder or arm","a partner cuddles up with me","someone hugs me when I've had a hard day","a partner puts an arm around me","we're close enough to feel each other's presence","someone gives me a spontaneous embrace","a partner rests a hand on me affectionately","we sit shoulder to shoulder","a partner greets me with a kiss hello or goodbye"]
+};
+const LOVE_INFO = {
+  words:{ desc:"You feel most loved through words — encouragement, appreciation, and kind, affirming things said out loud.", tips:["Tell partners that words matter — specific praise beats generic niceties.","Keep a note of kind things people have said.","Offer the affirmation you crave to others."] },
+  quality:{ desc:"You feel most loved through undivided attention — real presence and shared moments without distraction.", tips:["Protect a regular, device-free time together.","Name the kind of time you want.","Quality beats quantity."] },
+  gifts:{ desc:"You feel most loved through thoughtful gifts — valued for the thought behind them, not the price.", tips:["It's the thought, not the cost, that counts.","Share a list of things you'd love.","Keep the small tokens you receive."] },
+  service:{ desc:"You feel most loved when people do things for you — practical help that eases your load.", tips:["Ask directly for the help that means most.","Thank people for acts of service they already do.","Let people help."] },
+  touch:{ desc:"You feel most loved through physical closeness — a hug, a held hand, sitting near.", tips:["Tell partners affectionate touch is how you connect.","Build in small daily moments of contact.","Communicate your needs and boundaries."] }
+};
+const LOVE_SEQUENCE = [
+  ["words","quality"],["service","touch"],["quality","gifts"],["service","words"],["quality","service"],
+  ["gifts","touch"],["touch","words"],["service","gifts"],["touch","quality"],["words","gifts"],
+  ["gifts","service"],["touch","quality"],["words","service"],["touch","gifts"],["quality","touch"],
+  ["words","quality"],["service","words"],["touch","service"],["gifts","quality"],["words","gifts"],
+  ["gifts","words"],["quality","service"],["service","touch"],["quality","gifts"],["touch","words"],
+  ["words","touch"],["service","quality"],["gifts","touch"],["quality","words"],["service","gifts"]
+];
+function buildLoveQuestions() {
+  const c = { words:0,quality:0,gifts:0,service:0,touch:0 };
+  return LOVE_SEQUENCE.map(([x,y]) => ({ a:{lang:x,text:LOVE_STATEMENTS[x][c[x]++]}, b:{lang:y,text:LOVE_STATEMENTS[y][c[y]++]} }));
+}
+const LOVE_QUESTIONS = buildLoveQuestions();
+function loveCompute(answers) { const s={words:0,quality:0,gifts:0,service:0,touch:0}; answers.forEach(k=>{ if(k in s) s[k]++; }); return s; }
+function lovePrimary(s){ const top=Math.max(...LOVE_KEYS.map(k=>s[k]||0)); return LOVE_KEYS.filter(k=>(s[k]||0)===top); }
+
+// ════════════════════════════════════════════════════════════════════
+//  3. BIG FIVE  (real public-domain IPIP-50 Big-Five Factor Markers)
+// ════════════════════════════════════════════════════════════════════
+const BIG5_FACTORS = ["O","C","E","A","N"];
+const BIG5_INFO = {
+  O: { name:"Openness", color:"#8b5cf6", desc:"Imagination, curiosity, and openness to new ideas, art, and experiences." },
+  C: { name:"Conscientiousness", color:"#3aa17e", desc:"Organization, self-discipline, and goal-directed reliability." },
+  E: { name:"Extraversion", color:"#e0913a", desc:"Sociability, assertiveness, and energy drawn from the outer world." },
+  A: { name:"Agreeableness", color:"#5b8bd4", desc:"Compassion, cooperation, and trust toward other people." },
+  N: { name:"Neuroticism", color:"#c25e8a", desc:"Tendency toward stress, worry, and emotional reactivity (vs. calm stability)." }
+};
+// k:+1 keyed toward the factor; k:-1 reverse-keyed. (IPIP items, public domain.)
+const BIG5_QUESTIONS = [
+  {f:"E",k:+1,text:"Am the life of the party."},
+  {f:"A",k:-1,text:"Feel little concern for others."},
+  {f:"C",k:+1,text:"Am always prepared."},
+  {f:"N",k:+1,text:"Get stressed out easily."},
+  {f:"O",k:+1,text:"Have a rich vocabulary."},
+  {f:"E",k:-1,text:"Don't talk a lot."},
+  {f:"A",k:+1,text:"Am interested in people."},
+  {f:"C",k:-1,text:"Leave my belongings around."},
+  {f:"N",k:-1,text:"Am relaxed most of the time."},
+  {f:"O",k:-1,text:"Have difficulty understanding abstract ideas."},
+  {f:"E",k:+1,text:"Feel comfortable around people."},
+  {f:"A",k:-1,text:"Insult people."},
+  {f:"C",k:+1,text:"Pay attention to details."},
+  {f:"N",k:+1,text:"Worry about things."},
+  {f:"O",k:+1,text:"Have a vivid imagination."},
+  {f:"E",k:-1,text:"Keep in the background."},
+  {f:"A",k:+1,text:"Sympathize with others' feelings."},
+  {f:"C",k:-1,text:"Make a mess of things."},
+  {f:"N",k:-1,text:"Seldom feel blue."},
+  {f:"O",k:-1,text:"Am not interested in abstract ideas."},
+  {f:"E",k:+1,text:"Start conversations."},
+  {f:"A",k:-1,text:"Am not interested in other people's problems."},
+  {f:"C",k:+1,text:"Get chores done right away."},
+  {f:"N",k:+1,text:"Am easily disturbed."},
+  {f:"O",k:+1,text:"Have excellent ideas."},
+  {f:"E",k:-1,text:"Have little to say."},
+  {f:"A",k:+1,text:"Have a soft heart."},
+  {f:"C",k:-1,text:"Often forget to put things back in their proper place."},
+  {f:"N",k:+1,text:"Get upset easily."},
+  {f:"O",k:-1,text:"Do not have a good imagination."},
+  {f:"E",k:+1,text:"Talk to a lot of different people at parties."},
+  {f:"A",k:-1,text:"Am not really interested in others."},
+  {f:"C",k:+1,text:"Like order."},
+  {f:"N",k:+1,text:"Change my mood a lot."},
+  {f:"O",k:+1,text:"Am quick to understand things."},
+  {f:"E",k:-1,text:"Don't like to draw attention to myself."},
+  {f:"A",k:+1,text:"Take time out for others."},
+  {f:"C",k:-1,text:"Shirk my duties."},
+  {f:"N",k:+1,text:"Have frequent mood swings."},
+  {f:"O",k:+1,text:"Use difficult words."},
+  {f:"E",k:+1,text:"Don't mind being the center of attention."},
+  {f:"A",k:+1,text:"Feel others' emotions."},
+  {f:"C",k:+1,text:"Follow a schedule."},
+  {f:"N",k:+1,text:"Get irritated easily."},
+  {f:"O",k:+1,text:"Spend time reflecting on things."},
+  {f:"E",k:-1,text:"Am quiet around strangers."},
+  {f:"A",k:+1,text:"Make people feel at ease."},
+  {f:"C",k:+1,text:"Am exacting in my work."},
+  {f:"N",k:+1,text:"Often feel blue."},
+  {f:"O",k:+1,text:"Am full of ideas."}
+];
+function big5Compute(answers) {
+  const sum = {O:0,C:0,E:0,A:0,N:0}, cnt = {O:0,C:0,E:0,A:0,N:0};
+  BIG5_QUESTIONS.forEach((q,i)=>{ let v=answers[i]; if(v==null) return; const c=q.k>0?v:6-v; sum[q.f]+=c; cnt[q.f]++; });
+  const pct = {}; BIG5_FACTORS.forEach(f=>{ pct[f]=Math.round((sum[f]-cnt[f])/(cnt[f]*4)*100); });
+  return { sum, pct };
+}
+
+// ════════════════════════════════════════════════════════════════════
+//  4. DARK TRIAD  (SD3 structure: 9 items each; original wording)
+// ════════════════════════════════════════════════════════════════════
+const DT_TRAITS = ["mach","narc","psych"];
+const DT_INFO = {
+  mach: { name:"Machiavellianism", color:"#5b8bd4", desc:"A strategic, calculating stance toward others — manipulation, planning, and cynicism about human nature." },
+  narc: { name:"Narcissism", color:"#e0913a", desc:"Grandiosity, entitlement, and a need for admiration, status, and recognition." },
+  psych: { name:"Psychopathy", color:"#c25e8a", desc:"Impulsivity, thrill-seeking, low empathy, and callousness toward others." }
+};
+const DT_QUESTIONS = [
+  {t:"mach",k:+1,text:"It's smart to keep information back until you can use it to your advantage."},
+  {t:"mach",k:+1,text:"I'm willing to flatter people to get them on my side."},
+  {t:"mach",k:+1,text:"Most people can be manipulated if you know their weak spots."},
+  {t:"mach",k:+1,text:"I prefer to work behind the scenes rather than confront people directly."},
+  {t:"mach",k:+1,text:"It's wise to keep your real intentions to yourself."},
+  {t:"mach",k:+1,text:"I like to plan several moves ahead when dealing with people."},
+  {t:"mach",k:+1,text:"It's naive to trust people completely."},
+  {t:"mach",k:-1,text:"I'd rather be honest and upfront than play strategic games."},
+  {t:"mach",k:+1,text:"Getting ahead sometimes means bending the truth."},
+  {t:"narc",k:+1,text:"I like being the center of attention."},
+  {t:"narc",k:+1,text:"People should recognize how capable I am."},
+  {t:"narc",k:+1,text:"I expect to be treated as someone special."},
+  {t:"narc",k:+1,text:"I enjoy being complimented and admired."},
+  {t:"narc",k:+1,text:"I'm more talented than most people around me."},
+  {t:"narc",k:+1,text:"I dislike blending in as one of the crowd."},
+  {t:"narc",k:-1,text:"I don't really need others to notice me."},
+  {t:"narc",k:-1,text:"I find it easy to feel humble about my abilities."},
+  {t:"narc",k:+1,text:"I deserve more recognition than I usually get."},
+  {t:"psych",k:+1,text:"I'll say what I want without worrying who it hurts."},
+  {t:"psych",k:+1,text:"I like taking risks even when things could backfire."},
+  {t:"psych",k:+1,text:"People who get taken advantage of usually had it coming."},
+  {t:"psych",k:+1,text:"I rarely feel guilty after hurting someone."},
+  {t:"psych",k:+1,text:"I act on impulse without thinking about the consequences."},
+  {t:"psych",k:+1,text:"Getting back at people who cross me feels satisfying."},
+  {t:"psych",k:-1,text:"I avoid reckless or dangerous situations."},
+  {t:"psych",k:-1,text:"I feel real concern when others are suffering."},
+  {t:"psych",k:+1,text:"Rules are often there to be broken."}
+];
+function dtCompute(answers) {
+  const sum={mach:0,narc:0,psych:0}, cnt={mach:0,narc:0,psych:0};
+  DT_QUESTIONS.forEach((q,i)=>{ let v=answers[i]; if(v==null) return; const c=q.k>0?v:6-v; sum[q.t]+=c; cnt[q.t]++; });
+  const mean={}, pct={}; DT_TRAITS.forEach(t=>{ mean[t]=sum[t]/cnt[t]; pct[t]=Math.round((mean[t]-1)/4*100); });
+  return { mean, pct };
+}
+
+// ════════════════════════════════════════════════════════════════════
+//  5. PERSONALITY TYPE  (16Personalities structure: 4 axes + Identity;
+//     original wording. Output e.g. INFJ-T.)
+// ════════════════════════════════════════════════════════════════════
+// axis pairs: [positive pole letter, negative pole letter]; pole:+1 => agreement leans to positive letter.
+const MBTI_AXES = { EI:["E","I"], SN:["S","N"], TF:["T","F"], JP:["J","P"], AT:["A","T"] };
+const MBTI_AXIS_NAMES = { EI:"Mind", SN:"Energy", TF:"Nature", JP:"Tactics", AT:"Identity" };
+const MBTI_POLE_NAMES = { E:"Extraverted", I:"Introverted", S:"Observant", N:"Intuitive", T:"Thinking", F:"Feeling", J:"Judging", P:"Prospecting", A:"Assertive", "T_id":"Turbulent" };
+function poleName(letter, axis){ if(axis==="AT") return letter==="A"?"Assertive":"Turbulent"; return MBTI_POLE_NAMES[letter]; }
+const MBTI_QUESTIONS = [
+  {ax:"EI",p:+1,text:"I feel energized after spending time in a lively group."},
+  {ax:"EI",p:-1,text:"I'd rather have a few deep conversations than work a whole room."},
+  {ax:"EI",p:+1,text:"I often strike up conversations with people I don't know."},
+  {ax:"EI",p:-1,text:"I need quiet time alone to recharge."},
+  {ax:"EI",p:+1,text:"I tend to think out loud and process by talking."},
+  {ax:"EI",p:-1,text:"Big social events leave me drained."},
+  {ax:"SN",p:+1,text:"I focus on concrete facts more than theories."},
+  {ax:"SN",p:-1,text:"I'm drawn to abstract ideas and what could be."},
+  {ax:"SN",p:+1,text:"I trust practical experience over hunches."},
+  {ax:"SN",p:-1,text:"I often notice patterns and hidden meanings."},
+  {ax:"SN",p:+1,text:"I prefer clear step-by-step instructions to figuring it out as I go."},
+  {ax:"SN",p:-1,text:"My imagination often runs ahead to future possibilities."},
+  {ax:"TF",p:+1,text:"I make decisions with logic more than feelings."},
+  {ax:"TF",p:-1,text:"Staying true to people's feelings matters more to me than being right."},
+  {ax:"TF",p:+1,text:"I value fairness and consistency over making exceptions."},
+  {ax:"TF",p:-1,text:"I'm quick to empathize with how others feel."},
+  {ax:"TF",p:+1,text:"I can give critical feedback without much discomfort."},
+  {ax:"TF",p:-1,text:"Harmony in a group matters a great deal to me."},
+  {ax:"JP",p:+1,text:"I like to have things planned and settled."},
+  {ax:"JP",p:-1,text:"I prefer to keep my options open and stay flexible."},
+  {ax:"JP",p:+1,text:"I make lists and work steadily ahead of deadlines."},
+  {ax:"JP",p:-1,text:"I tend to work in bursts of energy near the deadline."},
+  {ax:"JP",p:+1,text:"I feel uneasy when plans are left loose."},
+  {ax:"JP",p:-1,text:"I enjoy improvising rather than following a plan."},
+  {ax:"AT",p:+1,text:"I stay confident and even-keeled under pressure."},
+  {ax:"AT",p:-1,text:"I tend to worry about my decisions after I've made them."},
+  {ax:"AT",p:+1,text:"I rarely second-guess myself."},
+  {ax:"AT",p:-1,text:"I'm sensitive to stress and criticism."},
+  {ax:"AT",p:+1,text:"I feel secure in my abilities most of the time."},
+  {ax:"AT",p:-1,text:"I often feel I could have done better."}
+];
+const MBTI_GROUPS = {
+  Analysts: { color:"#8b5cf6", match:t=>t[1]==="N"&&t[2]==="T", desc:"Analysts — independent, strategic, and curious, drawn to logic, competence, and big-picture problem-solving." },
+  Diplomats: { color:"#3aa17e", match:t=>t[1]==="N"&&t[2]==="F", desc:"Diplomats — empathetic and idealistic, guided by values, meaning, and helping people grow." },
+  Sentinels: { color:"#5b8bd4", match:t=>t[1]==="S"&&t[3]==="J", desc:"Sentinels — practical and dependable, valuing structure, responsibility, and getting things done." },
+  Explorers: { color:"#e0913a", match:t=>t[1]==="S"&&t[3]==="P", desc:"Explorers — spontaneous and hands-on, adaptable and energized by action and the present." }
+};
+function mbtiCompute(answers) {
+  const score = { EI:0,SN:0,TF:0,JP:0,AT:0 }, cnt = { EI:0,SN:0,TF:0,JP:0,AT:0 };
+  MBTI_QUESTIONS.forEach((q,i)=>{ const v=answers[i]; if(v==null) return; score[q.ax]+=q.p*(v-3); cnt[q.ax]++; });
+  const axes = {};
+  Object.keys(MBTI_AXES).forEach(ax=>{
+    const max = cnt[ax]*2; // |v-3| max 2
+    const pctPos = max ? (score[ax]+max)/(2*max)*100 : 50;
+    const [pos,neg] = MBTI_AXES[ax];
+    const letter = pctPos>=50 ? pos : neg;
+    const lean = Math.round(Math.max(pctPos,100-pctPos));
+    axes[ax] = { letter, lean };
+  });
+  const type = axes.EI.letter+axes.SN.letter+axes.TF.letter+axes.JP.letter;
+  const full = type+"-"+axes.AT.letter;
+  return { type, full, axes };
+}
+function mbtiGroup(type){ for(const g in MBTI_GROUPS) if(MBTI_GROUPS[g].match(type)) return g; return "Analysts"; }
+
+// ════════════════════════════════════════════════════════════════════
+//  6. RICE PURITY (100-item life-experience checklist; score = 100 − checked.
+//     Original, deliberately non-graphic wording.)
+// ════════════════════════════════════════════════════════════════════
+const RICE_QUESTIONS = [
+  "Held hands with someone romantically.","Been on a date.","Had a crush on someone.","Been in a romantic relationship.",
+  "Kissed someone romantically.","Kissed someone on a first date.","Slow danced with someone.","Written someone a love note or letter.",
+  "Confessed feelings to a crush.","Been turned down after asking someone out.","Had your heart broken.","Broken up with someone.",
+  "Dated more than one person at the same time.","Cheated on a partner.","Been cheated on.","Made out with someone.",
+  "Given or received a hickey.","Cuddled with someone overnight.","Fallen asleep beside a romantic partner.","Said \"I love you\" to a partner.",
+  "Skipped a class or lecture.","Lied to a parent or guardian.","Snuck out of the house.","Stayed out past curfew on purpose.",
+  "Told a serious lie to stay out of trouble.","Cheated on a test or assignment.","Been sent to the principal's office or equivalent.","Been suspended or expelled.",
+  "Pulled an all-nighter.","Forged a signature.","Tried alcohol.","Been drunk.",
+  "Had a hangover.","Felt sick from drinking.","Smoked a cigarette.","Used a vape or e-cigarette.",
+  "Tried cannabis.","Been high.","Tried a recreational drug other than cannabis.","Used a prescription drug not prescribed to you.",
+  "Been to a party that got out of hand.","Played a drinking game.","Been to a bar or club.","Used a fake ID.",
+  "Gotten a tattoo.","Gotten a piercing beyond standard ear lobes.","Gone skinny dipping.","Been undressed in a semi-public setting.",
+  "Sent a flirty or suggestive message.","Sent or received a revealing photo.","Met a partner's family.","Lived with a romantic partner.",
+  "Been engaged or married.","Taken a romantic trip with a partner.","Had a long-distance relationship.","Reconnected with an ex.",
+  "Kissed more than one person in a single day.","Kissed someone whose name you didn't know.","Had a casual, no-strings relationship.","Spent the night with someone you'd just met.",
+  "Been physically intimate with someone.","Been physically intimate with more than one person.","Been intimate somewhere other than a bedroom.","Been intimate outdoors.",
+  "Been interrupted while being intimate.","Watched adult content.","Visited an adult-oriented venue.","Been part of a love triangle.",
+  "Kept a relationship secret from friends or family.","Lied about your relationship status.","Gotten back together after a bad breakup.","Stopped replying to someone to end things (ghosted).",
+  "Been ghosted.","Had a crush on a friend's partner.","Driven over the speed limit on purpose.","Gotten a traffic ticket.",
+  "Been in a car accident.","Driven without a valid license.","Been pulled over by police.","Been questioned by police.",
+  "Been arrested or detained.","Spent a night away from home without telling anyone.","Gotten into a physical fight.","Taken something from a store without paying.",
+  "Damaged or vandalized property.","Trespassed somewhere off-limits.","Set off fireworks where you weren't supposed to.","Gambled for money.",
+  "Been kicked out of a venue or event.","Lied on an official form.","Gotten hurt doing something risky.","Snuck into a movie, show, or event.",
+  "Stayed up to watch the sunrise after being out all night.","Gone to a concert or festival.","Kept a secret that could get someone in trouble.","Made a prank call.",
+  "Regretted something you did while out at night.","Done something you'd never tell your parents.","Sworn at someone in anger.","Done something on this list mostly on a dare."
+];
+const RICE_BANDS = [
+  { min: 98, label: "Remarkably innocent", desc: "You've kept things very tame so far — a famously high purity score." },
+  { min: 85, label: "Pretty innocent", desc: "Mostly on the wholesome side, with a few experiences under your belt." },
+  { min: 70, label: "A balanced amount of experience", desc: "A pretty typical mix of innocence and lived experience." },
+  { min: 50, label: "Experienced", desc: "You've been around the block a fair bit and tried plenty of things." },
+  { min: 30, label: "Very experienced", desc: "You've packed a lot of living into your story." },
+  { min: 0, label: "You've lived a lot", desc: "Very little on this list is new to you — a low purity score, worn however you like." }
+];
+function riceCompute(answers) { const yes = answers.filter(Boolean).length; return { score: 100 - yes, yes }; }
+function riceBand(score) { return RICE_BANDS.find(b => score >= b.min) || RICE_BANDS[RICE_BANDS.length - 1]; }
+
+// ════════════════════════════════════════════════════════════════════
+//  QUIZ REGISTRY
+// ════════════════════════════════════════════════════════════════════
+const QUIZZES = {
+  attachment: { title:"Attachment Style", emoji:"🔗", tag:"#5b8bd4", type:"likert", questions:ATTACH_QUESTIONS, blurb:"24 questions · attachment anxiety & avoidance → one of four styles." },
+  love:       { title:"Love Language", emoji:"💛", tag:"#c25e8a", type:"choice", questions:LOVE_QUESTIONS, blurb:"30 questions · how you most feel loved across the five love languages." },
+  bigfive:    { title:"Big Five (OCEAN)", emoji:"🌐", tag:"#8b5cf6", type:"likert", questions:BIG5_QUESTIONS, blurb:"50 questions · the five core personality dimensions (public-domain IPIP items)." },
+  darktriad:  { title:"Dark Triad", emoji:"🌑", tag:"#2b2b33", type:"likert", questions:DT_QUESTIONS, blurb:"27 questions · Machiavellianism, narcissism, and psychopathy (SD3-style)." },
+  mbti:       { title:"Personality Type", emoji:"🧭", tag:"#3aa17e", type:"likert", questions:MBTI_QUESTIONS, blurb:"30 questions · your 4-letter type plus Assertive/Turbulent identity." },
+  rice:       { title:"Rice Purity", emoji:"🍚", tag:"#5b6ee1", type:"binary", questions:RICE_QUESTIONS, blurb:"100-item checklist · a lighthearted “purity” score out of 100." }
+};
+const QUIZ_ORDER = ["attachment","love","bigfive","darktriad","mbti","rice"];
+
+// ════════════════════════════════════════════════════════════════════
+//  STATE + STORAGE
+// ════════════════════════════════════════════════════════════════════
+let active = null, current = 0, answers = [], lastResult = null;
+const $ = id => document.getElementById(id);
+const SCREENS = ["screen-home","screen-quiz","screen-checklist","screen-results","screen-profiles"];
+function showScreen(id){ SCREENS.forEach(s=>$(s).classList.toggle("hidden", s!==id)); window.scrollTo({top:0,behavior:"smooth"}); }
+function setHeader(t,s){ $("app-title").textContent=t; $("app-subtitle").textContent=s; }
+
+const STORE_KEY = "sarah_attachment_profiles";
+const PROFILES_VERSION = 1;
+function loadProfiles(){ try{ const d=JSON.parse(localStorage.getItem(STORE_KEY)||"{}"); return Array.isArray(d.profiles)?d.profiles:[]; }catch(e){ return []; } }
+function writeProfiles(p){ localStorage.setItem(STORE_KEY, JSON.stringify({version:PROFILES_VERSION, profiles:p})); }
+const round2 = x => Math.round(x*100)/100;
+function localStamp(){ const d=new Date(),p=n=>String(n).padStart(2,"0"); return d.getFullYear()+"-"+p(d.getMonth()+1)+"-"+p(d.getDate())+"T"+p(d.getHours())+":"+p(d.getMinutes())+":"+p(d.getSeconds()); }
+function escapeHtml(s){ return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
+
+// ════════════════════════════════════════════════════════════════════
+//  HOME
+// ════════════════════════════════════════════════════════════════════
+function showHome(){
+  active=null;
+  setHeader("Personality & Relationship Quizzes","Private self-reflection — nothing leaves your device");
+  const wrap = $("home-cards"); wrap.innerHTML="";
+  QUIZ_ORDER.forEach(id=>{
+    const q=QUIZZES[id];
+    const b=document.createElement("button");
+    b.className="quiz-card";
+    b.innerHTML='<span class="quiz-emoji">'+q.emoji+'</span><span><h3>'+q.title+'</h3><p>'+q.blurb+'</p></span>';
+    b.onclick=()=>startQuiz(id);
+    wrap.appendChild(b);
+  });
+  $("home-profiles-btn").textContent="Saved profiles ("+countPeople()+")";
+  $("home-disclaimer").textContent="Educational self-reflection tools, not clinical or professional instruments. Big Five uses public-domain IPIP items; the Dark Triad and personality-type quizzes mirror the structure of well-known tests with original wording.";
+  showScreen("screen-home");
+}
+function countPeople(){ return new Set(loadProfiles().map(p=>(p.name||"?").toLowerCase())).size; }
+
+// ════════════════════════════════════════════════════════════════════
+//  ASSESSMENT FLOW
+// ════════════════════════════════════════════════════════════════════
+function startQuiz(id){
+  active=id; current=0; answers=new Array(QUIZZES[id].questions.length).fill(null);
+  if(QUIZZES[id].type==="binary"){ showChecklist(); return; }
+  setHeader(QUIZZES[id].title, QUIZZES[id].type==="choice"?"Pick the option that fits you better":"Rate how much you agree");
+  showScreen("screen-quiz"); renderQuestion();
+}
+
+function showChecklist(){
+  const quiz=QUIZZES[active];
+  answers=new Array(quiz.questions.length).fill(false);
+  setHeader(quiz.title, "Check everything you've done");
+  $("checklist-title").textContent=quiz.title;
+  $("checklist-intro").textContent="Check every item you've done. Your score is 100 minus the number you check — be honest, it's just for fun.";
+  const wrap=$("checklist"); wrap.innerHTML="";
+  quiz.questions.forEach((text,i)=>{
+    const row=document.createElement("div"); row.className="check-row";
+    row.innerHTML='<span class="check-num">'+(i+1)+'</span><span class="check-box">✓</span><span class="check-text">'+escapeHtml(text)+'</span>';
+    row.onclick=()=>{ answers[i]=!answers[i]; row.classList.toggle("checked", answers[i]); updateChecklistCount(); };
+    wrap.appendChild(row);
+  });
+  updateChecklistCount();
+  $("checklist-calc").onclick=()=>showResults();
+  showScreen("screen-checklist");
+}
+function updateChecklistCount(){ const n=answers.filter(Boolean).length; $("checklist-count").textContent=n+" checked · score would be "+(100-n); }
+function renderQuestion(){
+  const quiz=QUIZZES[active], total=quiz.questions.length;
+  $("progress-text").textContent="Question "+(current+1)+" of "+total;
+  const pct=Math.round(current/total*100);
+  $("progress-pct").textContent=pct+"%"; $("progress-fill").style.width=pct+"%";
+  $("back-btn").disabled=current===0;
+  const wrap=$("options"); wrap.innerHTML="";
+  if(quiz.type==="likert"){
+    $("question-text").textContent=quiz.questions[current].text;
+    $("nav-hint").textContent="Tip: press keys 1–5";
+    SCALE.forEach(opt=>{
+      const btn=document.createElement("button");
+      btn.innerHTML='<span class="num">'+opt.value+'</span><span>'+opt.label+'</span>';
+      if(answers[current]===opt.value) btn.classList.add("selected");
+      btn.onclick=()=>selectAnswer(opt.value);
+      wrap.appendChild(btn);
+    });
+  } else {
+    $("question-text").textContent="It's more meaningful to me when…";
+    $("nav-hint").textContent="Tip: press 1 or 2";
+    const q=quiz.questions[current];
+    [["1",q.a],["2",q.b]].forEach(([n,opt])=>{
+      const btn=document.createElement("button");
+      btn.innerHTML='<span class="num">'+n+'</span><span>'+escapeHtml(opt.text)+'</span>';
+      if(answers[current]===opt.lang) btn.classList.add("selected");
+      btn.onclick=()=>selectAnswer(opt.lang);
+      wrap.appendChild(btn);
+    });
+  }
+}
+function selectAnswer(v){ answers[current]=v; if(current<QUIZZES[active].questions.length-1){current++; renderQuestion();} else showResults(); }
+function goBack(){ if(current>0){current--; renderQuestion();} }
+
+// ════════════════════════════════════════════════════════════════════
+//  RESULTS
+// ════════════════════════════════════════════════════════════════════
+function bar(label, scoreText, pct, color){
+  return '<div class="dim"><div class="dim-label"><span>'+label+'</span><span class="score">'+scoreText+'</span></div>'+
+    '<div class="dim-track"><div class="dim-fill" style="background:'+color+'" data-w="'+pct+'"></div></div></div>';
+}
+function animateBars(){ requestAnimationFrame(()=>{ document.querySelectorAll("#result-body .dim-fill").forEach(f=>{ f.style.width=f.dataset.w+"%"; }); }); }
+
+function renderAttachmentBody(anx, avo, styleKey, badge){
+  const s=STYLES[styleKey];
+  const ap=((anx-1)/4)*100, vp=((avo-1)/4)*100;
+  const dx=20+(vp/100)*240, dy=20+(ap/100)*240;
+  $("result-body").innerHTML=
+    '<span class="badge" style="background:'+s.color+'">'+escapeHtml(badge||"Your result")+'</span>'+
+    '<div class="result-style" style="color:'+s.color+'">'+s.name+'</div>'+
+    bar("Attachment Anxiety", anx.toFixed(1)+" / 5", ap, "#e0913a")+
+    bar("Attachment Avoidance", avo.toFixed(1)+" / 5", vp, "#5b8bd4")+
+    '<svg class="quad-map" width="280" height="280" viewBox="0 0 280 280" aria-label="quadrant">'+
+      '<rect x="20" y="20" width="120" height="120" fill="#3aa17e22"/><rect x="140" y="20" width="120" height="120" fill="#5b8bd422"/>'+
+      '<rect x="20" y="140" width="120" height="120" fill="#e0913a22"/><rect x="140" y="140" width="120" height="120" fill="#c25e8a22"/>'+
+      '<line x1="20" y1="140" x2="260" y2="140" stroke="#bbb"/><line x1="140" y1="20" x2="140" y2="260" stroke="#bbb"/>'+
+      '<text x="80" y="78" text-anchor="middle" font-size="11" fill="#3aa17e" font-weight="700">Secure</text>'+
+      '<text x="200" y="78" text-anchor="middle" font-size="11" fill="#5b8bd4" font-weight="700">Dismissive</text>'+
+      '<text x="80" y="205" text-anchor="middle" font-size="11" fill="#e0913a" font-weight="700">Anxious</text>'+
+      '<text x="200" y="205" text-anchor="middle" font-size="11" fill="#c25e8a" font-weight="700">Fearful</text>'+
+      '<circle cx="'+dx+'" cy="'+dy+'" r="7" fill="'+s.color+'" stroke="#fff" stroke-width="2.5"/></svg>'+
+    '<p class="result-desc">'+escapeHtml(s.desc)+'</p>'+
+    '<div class="result-tips"><h3>Things that may help</h3><ul>'+s.tips.map(t=>'<li>'+escapeHtml(t)+'</li>').join("")+'</ul></div>';
+  animateBars();
+}
+function renderLoveBody(scores, badge){
+  const total=LOVE_KEYS.reduce((s,k)=>s+(scores[k]||0),0)||1;
+  const ranked=LOVE_KEYS.slice().sort((a,b)=>scores[b]-scores[a]);
+  const primary=lovePrimary(scores), pk=primary[0];
+  const title=primary.length>1?primary.map(k=>LOVE_NAMES[k]).join(" & ")+" (tie)":LOVE_NAMES[pk];
+  let h='<span class="badge" style="background:'+LOVE_COLORS[pk]+'">'+escapeHtml(badge||"Top love language")+'</span>'+
+    '<div class="result-style" style="color:'+LOVE_COLORS[pk]+'">'+escapeHtml(title)+'</div>';
+  ranked.forEach(k=>{ const c=scores[k]||0; h+=bar(LOVE_NAMES[k], c+" pts · "+Math.round(c/total*100)+"%", (c/12)*100, LOVE_COLORS[k]); });
+  h+='<p class="result-desc">'+escapeHtml(LOVE_INFO[pk].desc)+'</p>'+
+    '<div class="result-tips"><h3>Things that may help</h3><ul>'+LOVE_INFO[pk].tips.map(t=>'<li>'+escapeHtml(t)+'</li>').join("")+'</ul></div>';
+  $("result-body").innerHTML=h; animateBars();
+}
+function renderBig5Body(pct, badge){
+  const top=BIG5_FACTORS.slice().sort((a,b)=>pct[b]-pct[a])[0];
+  let h='<span class="badge" style="background:'+BIG5_INFO[top].color+'">'+escapeHtml(badge||"Big Five profile")+'</span>'+
+    '<div class="result-style">Your Big Five (OCEAN)</div>'+
+    '<p class="result-sub">Percentile-style scores on the five core personality dimensions.</p>';
+  BIG5_FACTORS.forEach(f=>{ h+=bar(BIG5_INFO[f].name, pct[f]+"%", pct[f], BIG5_INFO[f].color); });
+  h+='<div class="result-tips"><h3>What each dimension means</h3><ul>'+
+    BIG5_FACTORS.map(f=>'<li><strong>'+BIG5_INFO[f].name+'</strong> — '+escapeHtml(BIG5_INFO[f].desc)+'</li>').join("")+'</ul></div>';
+  $("result-body").innerHTML=h; animateBars();
+}
+function renderDarkBody(res, badge){
+  const top=DT_TRAITS.slice().sort((a,b)=>res.pct[b]-res.pct[a])[0];
+  let h='<span class="badge" style="background:'+DT_INFO[top].color+'">'+escapeHtml(badge||"Dark Triad profile")+'</span>'+
+    '<div class="result-style">Dark Triad profile</div>'+
+    '<p class="result-sub">Mean score (1–5) on each trait. These are normal-range traits, not a diagnosis.</p>';
+  DT_TRAITS.forEach(t=>{ h+=bar(DT_INFO[t].name, res.mean[t].toFixed(1)+" / 5 · "+res.pct[t]+"%", res.pct[t], DT_INFO[t].color); });
+  h+='<div class="result-tips"><h3>What each trait means</h3><ul>'+
+    DT_TRAITS.map(t=>'<li><strong>'+DT_INFO[t].name+'</strong> — '+escapeHtml(DT_INFO[t].desc)+'</li>').join("")+'</ul></div>'+
+    '<p class="mini-note">This is a brief self-reflection screen inspired by the Short Dark Triad. It is not a clinical or diagnostic instrument.</p>';
+  $("result-body").innerHTML=h; animateBars();
+}
+function renderMbtiBody(res, badge){
+  const group=mbtiGroup(res.type), g=MBTI_GROUPS[group];
+  let h='<span class="badge" style="background:'+g.color+'">'+escapeHtml(badge||"Personality type")+'</span>'+
+    '<div class="typecode" style="color:'+g.color+'">'+res.full+'</div>'+
+    '<p class="result-sub"><strong>'+group+'</strong></p>';
+  Object.keys(MBTI_AXES).forEach(ax=>{
+    const a=res.axes[ax];
+    h+=bar(MBTI_AXIS_NAMES[ax]+": "+poleName(a.letter,ax), a.lean+"%", a.lean, g.color);
+  });
+  h+='<p class="result-desc">'+escapeHtml(g.desc)+'</p>'+
+    '<div class="result-tips"><h3>Your letters</h3><ul>'+
+      Object.keys(MBTI_AXES).map(ax=>{ const a=res.axes[ax]; return '<li><strong>'+a.letter+'</strong> — '+poleName(a.letter,ax)+' ('+MBTI_AXIS_NAMES[ax]+')</li>'; }).join("")+
+    '</ul></div>'+
+    '<p class="mini-note">An original personality-type quiz modeled on the 16Personalities structure (Jungian dichotomies plus an Assertive/Turbulent identity). Not affiliated with that test.</p>';
+  $("result-body").innerHTML=h; animateBars();
+}
+
+// dispatch table: per-quiz compute + render + summary used everywhere
+const QUIZ_RESULT = {
+  attachment: {
+    compute: ans => { const {anxiety,avoidance}=attachCompute(ans); const style=attachClassify(anxiety,avoidance); return {quiz:"attachment", style, anxiety:round2(anxiety), avoidance:round2(avoidance)}; },
+    fromEntry: p => { const a=p.answers; if(Array.isArray(a)&&a.length===ATTACH_QUESTIONS.length&&a.every(v=>v)){const {anxiety,avoidance}=attachCompute(a);return{anxiety,avoidance,style:attachClassify(anxiety,avoidance)};} return {anxiety:+p.anxiety||0,avoidance:+p.avoidance||0,style:p.style||"secure"}; },
+    label: r => STYLES[r.style].name, color: r => STYLES[r.style].color,
+    render: (r,badge) => renderAttachmentBody(r.anxiety, r.avoidance, r.style, badge)
+  },
+  love: {
+    compute: ans => { const s=loveCompute(ans); return {quiz:"love", primary:lovePrimary(s)[0], scores:s}; },
+    fromEntry: p => { const a=p.answers; const s=(Array.isArray(a)&&a.length===LOVE_QUESTIONS.length&&a.every(v=>v))?loveCompute(a):(p.scores||{}); return {scores:s}; },
+    label: r => LOVE_NAMES[lovePrimary(r.scores)[0]], color: r => LOVE_COLORS[lovePrimary(r.scores)[0]],
+    render: (r,badge) => renderLoveBody(r.scores, badge)
+  },
+  bigfive: {
+    compute: ans => { const {pct}=big5Compute(ans); return {quiz:"bigfive", pct}; },
+    fromEntry: p => { const a=p.answers; if(Array.isArray(a)&&a.length===BIG5_QUESTIONS.length&&a.every(v=>v)) return {pct:big5Compute(a).pct}; return {pct:p.pct||{}}; },
+    label: r => { const top=BIG5_FACTORS.slice().sort((a,b)=>r.pct[b]-r.pct[a])[0]; return "High "+BIG5_INFO[top].name; }, color: r => { const top=BIG5_FACTORS.slice().sort((a,b)=>r.pct[b]-r.pct[a])[0]; return BIG5_INFO[top].color; },
+    render: (r,badge) => renderBig5Body(r.pct, badge)
+  },
+  darktriad: {
+    compute: ans => { const r=dtCompute(ans); return {quiz:"darktriad", mean:r.mean, pct:r.pct}; },
+    fromEntry: p => { const a=p.answers; if(Array.isArray(a)&&a.length===DT_QUESTIONS.length&&a.every(v=>v)) return dtCompute(a); return {mean:p.mean||{}, pct:p.pct||{}}; },
+    label: r => { const top=DT_TRAITS.slice().sort((a,b)=>r.pct[b]-r.pct[a])[0]; return "High "+DT_INFO[top].name; }, color: r => { const top=DT_TRAITS.slice().sort((a,b)=>r.pct[b]-r.pct[a])[0]; return DT_INFO[top].color; },
+    render: (r,badge) => renderDarkBody(r, badge)
+  },
+  mbti: {
+    compute: ans => { const r=mbtiCompute(ans); return {quiz:"mbti", type:r.type, full:r.full, axes:r.axes}; },
+    fromEntry: p => { const a=p.answers; if(Array.isArray(a)&&a.length===MBTI_QUESTIONS.length&&a.every(v=>v)) return mbtiCompute(a); return {type:(p.type||"----").slice(0,4), full:p.full||p.type||"----", axes:p.axes||{}}; },
+    label: r => r.full, color: r => MBTI_GROUPS[mbtiGroup(r.type)].color,
+    render: (r,badge) => renderMbtiBody(r, badge)
+  },
+  rice: {
+    compute: ans => { const r=riceCompute(ans); return {quiz:"rice", score:r.score, yes:r.yes}; },
+    fromEntry: p => { const a=p.answers; if(Array.isArray(a)&&a.length===RICE_QUESTIONS.length) return riceCompute(a); return {score:(p.score!=null?+p.score:0), yes:100-(p.score!=null?+p.score:0)}; },
+    label: r => "Purity "+r.score, color: r => "#5b6ee1",
+    render: (r,badge) => renderRiceBody(r, badge)
+  }
+};
+
+function renderRiceBody(r, badge){
+  const b=riceBand(r.score);
+  $("result-body").innerHTML=
+    '<span class="badge" style="background:#5b6ee1">'+escapeHtml(badge||"Rice Purity")+'</span>'+
+    '<div class="typecode" style="color:#5b6ee1">'+r.score+'<span style="font-size:1.1rem;color:var(--muted)"> / 100</span></div>'+
+    '<p class="result-sub">'+escapeHtml(b.label)+'</p>'+
+    bar("Purity score", r.score+" / 100", r.score, "#5b6ee1")+
+    '<p class="result-desc">'+escapeHtml(b.desc)+'</p>'+
+    '<p class="mini-note">You checked '+r.yes+' of 100 items. A higher score means more "innocent." This is a lighthearted checklist, not a judgment of any kind.</p>';
+  animateBars();
+}
+
+function resultActions(mode, ctx){
+  const a=$("result-actions"); a.innerHTML=""; $("saved-note").classList.add("hidden");
+  if(mode==="saved"){ addBtn(a,"Back to profiles","ghost-btn",showProfiles); }
+  else { addBtn(a,"Save to profile","primary-btn",openSaveModal); addBtn(a,"Saved profiles","ghost-btn",showProfiles); }
+  if(ctx) addBtn(a,"View answers","ghost-btn",()=>showAnswers(ctx));
+  addBtn(a,"Retake","text-btn",()=>startQuiz(active));
+  showScreen("screen-results");
+}
+function addBtn(parent,label,cls,fn){ const b=document.createElement("button"); b.className=cls; b.textContent=label; b.onclick=fn; parent.appendChild(b); }
+
+function showResults(){
+  const res=QUIZ_RESULT[active].compute(answers);
+  lastResult=Object.assign({}, res, { answers:answers.slice() });
+  showFresh();
+}
+function showFresh(){
+  QUIZ_RESULT[active].render(lastResult, null);
+  resultActions("fresh", { quiz:lastResult.quiz, answers:lastResult.answers, back:showFresh });
+}
+
+// list each question with the answer the person gave
+function answerRows(quiz, ans){
+  ans = ans || [];
+  if(quiz==="rice") return RICE_QUESTIONS.map((t,i)=>({q:t, a:ans[i]?"Yes":"No", no:!ans[i]}));
+  if(quiz==="love") return LOVE_QUESTIONS.map((q,i)=>{ const opt=q.a.lang===ans[i]?q.a:(q.b.lang===ans[i]?q.b:null); return {q:"It's more meaningful to me when…", a:opt?opt.text:"—"}; });
+  const qs=QUIZZES[quiz].questions;
+  return qs.map((q,i)=>({q:q.text, a:(ans[i]!=null&&SCALE[ans[i]-1])?SCALE[ans[i]-1].label:"—"}));
+}
+function showAnswers(ctx){
+  const rows=answerRows(ctx.quiz, ctx.answers);
+  let h='<div class="result-style">Your answers</div><p class="result-sub">'+escapeHtml(QUIZZES[ctx.quiz].title)+' · '+rows.length+' questions</p><div class="answers-list">';
+  rows.forEach((r,i)=>{ h+='<div class="ans-row"><div class="ans-q">'+(i+1)+'. '+escapeHtml(r.q)+'</div><div class="ans-a'+(r.no?' no':'')+'">'+escapeHtml(r.a)+'</div></div>'; });
+  h+='</div>';
+  $("result-body").innerHTML=h;
+  const a=$("result-actions"); a.innerHTML=""; $("saved-note").classList.add("hidden");
+  addBtn(a,"Back","ghost-btn",ctx.back);
+  showScreen("screen-results");
+}
+
+// ════════════════════════════════════════════════════════════════════
+//  SAVING  (results stored as flat entries keyed by name+quiz; the
+//  profiles screen groups them per person)
+// ════════════════════════════════════════════════════════════════════
+function openSaveModal(){
+  if(!lastResult) return;
+  const names=[...new Set(loadProfiles().map(p=>p.name).filter(Boolean))];
+  const datalist = names.length ? '<datalist id="name-suggest">'+names.map(n=>'<option value="'+escapeHtml(n)+'">').join("")+'</datalist>' : '';
+  const backdrop=document.createElement("div"); backdrop.className="modal-backdrop";
+  backdrop.innerHTML='<div class="modal"><h3>Save to a profile</h3>'+
+    '<p>Use a new name, or an existing one to add this result to that profile.</p>'+
+    '<input id="profile-name" type="text" placeholder="e.g. Matt" maxlength="40" autocomplete="off" list="name-suggest">'+datalist+
+    '<div class="modal-error" id="modal-error"></div>'+
+    '<div class="modal-actions"><button class="text-btn" id="modal-cancel">Cancel</button><button class="primary-btn" id="modal-save">Save</button></div></div>';
+  document.body.appendChild(backdrop);
+  const input=$("profile-name"); input.focus();
+  const close=()=>backdrop.remove();
+  const commit=()=>{
+    const name=input.value.trim();
+    if(!name){ $("modal-error").textContent="Please enter a name."; input.focus(); return; }
+    const profiles=loadProfiles();
+    const idx=profiles.findIndex(p=>(p.name||"").toLowerCase()===name.toLowerCase() && (p.quiz||"attachment")===lastResult.quiz);
+    const entry=Object.assign({name, saved_at:localStamp()}, lastResult);
+    let verb="Saved";
+    if(idx>=0){ profiles[idx]=entry; verb="Updated"; } else profiles.push(entry);
+    writeProfiles(profiles); close();
+    const note=$("saved-note"); note.textContent=verb+" to “"+name+"” ✓ — "+QUIZZES[lastResult.quiz].title; note.classList.remove("hidden");
+  };
+  $("modal-cancel").onclick=close; $("modal-save").onclick=commit;
+  backdrop.onclick=e=>{ if(e.target===backdrop) close(); };
+  input.addEventListener("keydown",e=>{ if(e.key==="Enter") commit(); if(e.key==="Escape") close(); });
+}
+
+// ════════════════════════════════════════════════════════════════════
+//  STYLED DIALOG
+// ════════════════════════════════════════════════════════════════════
+function openDialog(opts){
+  const backdrop=document.createElement("div"); backdrop.className="modal-backdrop";
+  const cancel=opts.cancelLabel?'<button class="text-btn" id="dlg-cancel">'+escapeHtml(opts.cancelLabel)+'</button>':'';
+  backdrop.innerHTML='<div class="modal"><h3>'+escapeHtml(opts.title||"")+'</h3>'+(opts.message?'<p>'+escapeHtml(opts.message)+'</p>':'')+
+    '<div class="modal-actions">'+cancel+'<button class="'+(opts.danger?'danger-btn':'primary-btn')+'" id="dlg-ok">'+escapeHtml(opts.confirmLabel||"OK")+'</button></div></div>';
+  document.body.appendChild(backdrop);
+  const close=()=>{ backdrop.remove(); document.removeEventListener("keydown",onKey); };
+  const confirm=()=>{ close(); if(opts.onConfirm) opts.onConfirm(); };
+  function onKey(e){ if(e.key==="Escape") close(); }
+  const c=$("dlg-cancel"); if(c) c.onclick=close;
+  $("dlg-ok").onclick=confirm; $("dlg-ok").focus();
+  backdrop.onclick=e=>{ if(e.target===backdrop) close(); };
+  document.addEventListener("keydown",onKey);
+}
+
+// ════════════════════════════════════════════════════════════════════
+//  PROFILES  (grouped per person)
+// ════════════════════════════════════════════════════════════════════
+function entryResult(p){ const q=p.quiz||"attachment"; return QUIZ_RESULT[q]?QUIZ_RESULT[q].fromEntry(p):null; }
+
+function showProfiles(){
+  const profiles=loadProfiles();
+  setHeader("Saved profiles","Each profile collects that person's test results");
+  const list=$("profiles-list"); list.innerHTML="";
+  if(!profiles.length){ list.innerHTML='<div class="empty">No saved profiles yet.<br>Take a quiz and tap “Save to profile.”</div>'; showScreen("screen-profiles"); return; }
+  // group by name (case-insensitive), keep underlying indices
+  const groups=new Map();
+  profiles.forEach((p,idx)=>{ const key=(p.name||"?").toLowerCase(); if(!groups.has(key)) groups.set(key,{name:p.name||"?", items:[]}); groups.get(key).items.push({p,idx}); });
+  groups.forEach(group=>{
+    const card=document.createElement("div"); card.className="person";
+    const head=document.createElement("div"); head.className="person-head";
+    head.innerHTML='<span class="person-name">'+escapeHtml(group.name)+'</span>';
+    const delAll=document.createElement("button"); delAll.className="person-del"; delAll.textContent="Delete profile";
+    delAll.onclick=()=>deletePerson(group.name);
+    head.appendChild(delAll); card.appendChild(head);
+
+    const taken=new Set();
+    group.items.forEach(({p,idx})=>{
+      const q=p.quiz||"attachment"; taken.add(q);
+      const cfg=QUIZ_RESULT[q]; const r=cfg?cfg.fromEntry(p):null;
+      const row=document.createElement("div"); row.className="res-row";
+      const main=document.createElement("div"); main.className="res-main";
+      const label=r?cfg.label(r):"?"; const color=r?cfg.color(r):"#999";
+      main.innerHTML='<span class="tag" style="background:'+QUIZZES[q].tag+'">'+QUIZZES[q].title+'</span>'+
+        '<span class="res-label">'+escapeHtml(label)+'</span>';
+      main.onclick=()=>viewEntry(idx);
+      const del=document.createElement("button"); del.className="res-del"; del.textContent="✕";
+      del.title="Remove this result"; del.onclick=e=>{ e.stopPropagation(); deleteEntry(idx); };
+      row.appendChild(main); row.appendChild(del); card.appendChild(row);
+    });
+    // show which quizzes are still missing, as quick links
+    const missing=QUIZ_ORDER.filter(q=>!taken.has(q));
+    if(missing.length){
+      const m=document.createElement("div"); m.className="missing";
+      m.innerHTML="Not yet taken: "+missing.map(q=>'<a data-q="'+q+'">'+QUIZZES[q].title+'</a>').join(", ");
+      m.querySelectorAll("a").forEach(a=>a.onclick=()=>startQuiz(a.dataset.q));
+      card.appendChild(m);
+    }
+    list.appendChild(card);
+  });
+  showScreen("screen-profiles");
+}
+
+function viewEntry(idx){
+  const p=loadProfiles()[idx]; if(!p) return;
+  const q=p.quiz||"attachment"; const cfg=QUIZ_RESULT[q];
+  active=q;
+  setHeader(QUIZZES[q].title, "Saved result for "+(p.name||"profile"));
+  cfg.render(cfg.fromEntry(p), p.name||"Profile");
+  resultActions("saved", { quiz:q, answers:p.answers||[], back:()=>viewEntry(idx) });
+}
+function deleteEntry(idx){
+  const p=loadProfiles()[idx]; if(!p) return;
+  openDialog({ title:"Remove this result?", message:"Remove the "+QUIZZES[p.quiz||"attachment"].title+" result from “"+(p.name||"?")+"”?",
+    confirmLabel:"Remove", cancelLabel:"Cancel", danger:true,
+    onConfirm:()=>{ const a=loadProfiles(); a.splice(idx,1); writeProfiles(a); showProfiles(); } });
+}
+function deletePerson(name){
+  openDialog({ title:"Delete profile?", message:"“"+name+"” and all its saved results will be permanently removed.",
+    confirmLabel:"Delete", cancelLabel:"Cancel", danger:true,
+    onConfirm:()=>{ const a=loadProfiles().filter(p=>(p.name||"").toLowerCase()!==name.toLowerCase()); writeProfiles(a); showProfiles(); } });
+}
+
+// ════════════════════════════════════════════════════════════════════
+//  EXPORT / IMPORT
+// ════════════════════════════════════════════════════════════════════
+function exportProfiles(){
+  const data=JSON.stringify({version:PROFILES_VERSION, profiles:loadProfiles()}, null, 2);
+  const blob=new Blob([data],{type:"application/json"}); const url=URL.createObjectURL(blob);
+  const a=document.createElement("a"); a.href=url; a.download="profiles.json"; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+}
+function importProfiles(){ $("file-import").click(); }
+function handleImportFile(file){
+  const reader=new FileReader();
+  reader.onload=()=>{
+    let imported; try{ const d=JSON.parse(reader.result); imported=Array.isArray(d.profiles)?d.profiles:(Array.isArray(d)?d:null); }catch(e){ imported=null; }
+    if(!imported){ openDialog({title:"Couldn’t import", message:"That file isn’t a valid profiles.json export."}); return; }
+    const profiles=loadProfiles(); let added=0,updated=0;
+    imported.forEach(p=>{ if(!p||!p.name) return; const idx=profiles.findIndex(q=>(q.name||"").toLowerCase()===p.name.toLowerCase() && (q.quiz||"attachment")===(p.quiz||"attachment")); if(idx>=0){profiles[idx]=p;updated++;}else{profiles.push(p);added++;} });
+    writeProfiles(profiles); showProfiles();
+    openDialog({title:"Import complete", message:"Imported "+added+" new, "+updated+" updated."});
+  };
+  reader.readAsText(file);
+}
+$("file-import").addEventListener("change", function(){ if(this.files&&this.files[0]) handleImportFile(this.files[0]); this.value=""; });
+
+// ════════════════════════════════════════════════════════════════════
+//  KEYBOARD
+// ════════════════════════════════════════════════════════════════════
+document.addEventListener("keydown",(e)=>{
+  if(e.metaKey||e.ctrlKey||e.altKey) return;
+  if($("screen-quiz").classList.contains("hidden")) return;
+  if(document.querySelector(".modal-backdrop")) return;
+  const quiz=QUIZZES[active]; if(!quiz) return;
+  if(quiz.type==="likert"){ if(e.key>="1"&&e.key<="5"){ selectAnswer(Number(e.key)); e.preventDefault(); } }
+  else { const q=quiz.questions[current]; if(e.key==="1"){selectAnswer(q.a.lang);e.preventDefault();} else if(e.key==="2"){selectAnswer(q.b.lang);e.preventDefault();} }
+  if(e.key==="Backspace"){ goBack(); e.preventDefault(); }
+});
+
+showHome();
+</script>
+</body>
+</html>

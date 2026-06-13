@@ -1,0 +1,1336 @@
+#!/usr/bin/env python3
+"""Sarah's relationship quizzes — terminal edition.
+
+Run inline:  ./attachment-style-test   (or the `sarah` launcher)
+Controls:    number keys to answer, B to go back, Q to quit.
+
+Two quizzes:
+  1. Attachment Style  — 24-item Likert (anxiety / avoidance → 4 styles)
+  2. Love Language     — 30-item forced-choice (5 languages, Chapman-style scoring)
+
+Profiles are saved to profiles.json next to this script, in the same JSON
+format the web version exports/imports, so the two can share profiles.
+"""
+
+import json
+import os
+import sys
+from collections import Counter
+from datetime import datetime
+
+# ── ANSI helpers ──────────────────────────────────────────────────────────
+RESET = "\033[0m"
+BOLD = "\033[1m"
+DIM = "\033[2m"
+GREEN = "\033[92m"
+AMBER = "\033[93m"
+BLUE = "\033[94m"
+PINK = "\033[95m"
+CYAN = "\033[96m"
+
+PROFILES_VERSION = 1
+
+# ════════════════════════════════════════════════════════════════════════
+#  ATTACHMENT STYLE QUIZ
+# ════════════════════════════════════════════════════════════════════════
+ATTACH_QUESTIONS = [
+    ("I worry about being abandoned by people I'm close to.", "anx", False),
+    ("I find it easy to depend on partners or close friends.", "avo", True),
+    ("I worry that romantic partners won't care about me as much as I care about them.", "anx", False),
+    ("I prefer not to show others how I feel deep down.", "avo", False),
+    ("I often need a lot of reassurance that I am loved.", "anx", False),
+    ("I feel comfortable sharing my private thoughts and feelings with a partner.", "avo", True),
+    ("When someone I'm close to is unavailable, I fear they're losing interest in me.", "anx", False),
+    ("I get uncomfortable when someone wants to be very emotionally close to me.", "avo", False),
+    ("I rarely worry about my relationships ending.", "anx", True),
+    ("I find it difficult to allow myself to depend on others.", "avo", False),
+    ("If I can't reach someone I care about, I assume something is wrong between us.", "anx", False),
+    ("I tell the people I'm close to just about everything.", "avo", True),
+    ("My desire to be very close sometimes scares people away.", "anx", False),
+    ("I pull away when a partner starts to get too close.", "avo", False),
+    ("I feel confident that the people I love will be there when I need them.", "anx", True),
+    ("It helps me to turn to the people I'm close to in times of need.", "avo", True),
+    ("I get frustrated when partners aren't around as much as I would like.", "anx", False),
+    ("I prefer to deal with problems on my own rather than ask for support.", "avo", False),
+    ("I sometimes feel that I push people to show more feeling and commitment than they want to.", "anx", False),
+    ("Being depended on by others makes me feel uneasy.", "avo", False),
+    ("I don't often worry about being rejected.", "anx", True),
+    ("I am comfortable being emotionally close to other people.", "avo", True),
+    ("When I'm not in a relationship, I feel somewhat anxious and incomplete.", "anx", False),
+    ("It's important to me to feel self-sufficient rather than rely on a partner.", "avo", False),
+]
+
+SCALE = ["Strongly disagree", "Disagree", "Neutral", "Agree", "Strongly agree"]
+
+STYLES = {
+    "secure": (
+        "SECURE", GREEN,
+        "You appear comfortable with both intimacy and independence. You can depend "
+        "on others and let them depend on you without losing your sense of self, and "
+        "you don't spend much energy worrying about rejection. Conflict feels "
+        "manageable rather than threatening, which makes it easier to communicate "
+        "openly and repair after disagreements.",
+        [
+            "Keep investing in open communication — it's your natural strength.",
+            "Notice when partners have different attachment patterns and offer steady reassurance.",
+            "Security isn't fixed; high stress can shift anyone, so keep tending your support network.",
+        ],
+    ),
+    "anxious": (
+        "ANXIOUS-PREOCCUPIED", AMBER,
+        "You appear to deeply value closeness, but worry about whether others will be "
+        "as committed to you as you are to them. You may be highly attuned to small "
+        "shifts in a partner's mood or availability, and seek reassurance when you "
+        "sense distance. This sensitivity can be a strength — you notice things "
+        "others miss — but it can also create cycles of worry and protest behavior.",
+        [
+            'When anxiety spikes, pause and ask: "What do I actually know vs. what am I assuming?"',
+            "Practice self-soothing (breathing, journaling, a walk) before seeking reassurance.",
+            'State needs directly ("I\'d love a check-in text") instead of testing or hinting.',
+            "Build a fulfilling life outside the relationship — friendships, interests, goals.",
+        ],
+    ),
+    "avoidant": (
+        "DISMISSIVE-AVOIDANT", BLUE,
+        "You appear to prize independence and self-sufficiency, and may feel crowded "
+        "when relationships demand a lot of emotional closeness. You likely manage "
+        "stress by handling things on your own, and may downplay your need for "
+        "connection. The underlying need for closeness is still there — it just "
+        "feels safer to keep it at arm's length.",
+        [
+            "Experiment with small disclosures — share one feeling before withdrawing.",
+            'When you feel the urge to pull away, name it ("I need some space, and I\'ll come back") rather than going silent.',
+            "Notice that accepting support doesn't erase your competence or independence.",
+            "Schedule connection deliberately if it doesn't come spontaneously.",
+        ],
+    ),
+    "fearful": (
+        "FEARFUL-AVOIDANT", PINK,
+        "You appear to both long for closeness and feel wary of it — wanting "
+        "connection while bracing for the possibility of being hurt. This push-pull "
+        "can show up as getting close quickly and then withdrawing, or trusting and "
+        "doubting in cycles. It often develops as a sensible adaptation to past "
+        "relationships that were unpredictable, and it can change with practice and "
+        "support.",
+        [
+            "Go slowly: build trust in small, repeated, low-stakes steps rather than all-or-nothing leaps.",
+            'When the urge to flee or cling appears, label it: "This is my attachment alarm, not necessarily reality."',
+            "Choose consistent, patient people, and let consistency accumulate as evidence.",
+            "This pattern responds especially well to working with a therapist — consider it an investment, not a last resort.",
+        ],
+    ),
+}
+
+
+def attach_compute(answers):
+    sums = {"anx": [0, 0], "avo": [0, 0]}
+    for (_, dim, reverse), v in zip(ATTACH_QUESTIONS, answers):
+        if reverse:
+            v = 6 - v
+        sums[dim][0] += v
+        sums[dim][1] += 1
+    return sums["anx"][0] / sums["anx"][1], sums["avo"][0] / sums["avo"][1]
+
+
+def attach_classify(anxiety, avoidance):
+    high_anx, high_avo = anxiety >= 3, avoidance >= 3
+    if not high_anx and not high_avo:
+        return "secure"
+    if high_anx and not high_avo:
+        return "anxious"
+    if not high_anx and high_avo:
+        return "avoidant"
+    return "fearful"
+
+
+def quadrant_map(anxiety, avoidance):
+    w, h = 38, 10
+    grid = [[" "] * w for _ in range(h)]
+
+    def put(r, c, s):
+        for k, char in enumerate(s):
+            if c + k < w:
+                grid[r][c + k] = char
+
+    put(1, 5, "SECURE")
+    put(1, 22, "DISMISSIVE")
+    put(8, 5, "ANXIOUS")
+    put(8, 23, "FEARFUL")
+    mx = min(w - 1, int((avoidance - 1) / 4 * (w - 1) + 0.5))
+    my = min(h - 1, int((anxiety - 1) / 4 * (h - 1) + 0.5))
+    grid[my][mx] = "◉"
+
+    half = w // 2
+    horiz = "─" * half
+    side = {2: " low  ", 3: " anx  ", 6: " high ", 7: " anx  "}
+    lines = ["        low avoidance ─── high avoidance",
+             f"      ┌{horiz}┬{horiz}┐"]
+    for r in range(h):
+        row = "".join(grid[r])
+        lines.append(f"{side.get(r, '      ')}│{row[:half]}│{row[half:]}│")
+        if r == h // 2 - 1:
+            lines.append(f"      ├{horiz}┼{horiz}┤")
+    lines.append(f"      └{horiz}┴{horiz}┘")
+    return "\n".join(lines)
+
+
+def render_attachment(anxiety, avoidance, style_key, title=None):
+    name, color, desc, tips = STYLES[style_key]
+    print(f"\n{DIM}── {title or 'computing results'} ──{RESET}\n")
+    print(f"ANXIETY    {anxiety:.1f}/5  {AMBER}{score_bar(anxiety)}{RESET}")
+    print(f"AVOIDANCE  {avoidance:.1f}/5  {BLUE}{score_bar(avoidance)}{RESET}\n")
+    print(quadrant_map(anxiety, avoidance))
+    print(f"\nRESULT: {color}{BOLD}★ {name} ★{RESET}\n")
+    print(f"{DIM}{wrap(desc)}{RESET}\n")
+    print(f"{CYAN}things that may help:{RESET}")
+    for tip in tips:
+        print(f"{DIM}{wrap(tip, width=70, first='  - ', rest='    ')}{RESET}")
+    print(f"\n{DIM}If relationship distress is significantly affecting your life, consider\n"
+          f"speaking with a licensed therapist.{RESET}")
+
+
+# ════════════════════════════════════════════════════════════════════════
+#  LOVE LANGUAGE QUIZ
+# ════════════════════════════════════════════════════════════════════════
+# Five languages. Methodology matches the standard Chapman "Love Language
+# Profile": 30 forced-choice pairs, every language paired against each of the
+# other four three times, so each language can score 0–12 and points total 30.
+# The statement wording below is original (the official question text is not
+# reproduced).
+LOVE_KEYS = ["words", "quality", "gifts", "service", "touch"]
+LOVE_NAMES = {
+    "words": "Words of Affirmation",
+    "quality": "Quality Time",
+    "gifts": "Receiving Gifts",
+    "service": "Acts of Service",
+    "touch": "Physical Touch",
+}
+LOVE_COLORS = {
+    "words": BLUE, "quality": GREEN, "gifts": PINK, "service": AMBER, "touch": CYAN,
+}
+
+LOVE_STATEMENTS = {
+    "words": [
+        "someone tells me they're proud of me",
+        "a partner gives me a heartfelt compliment",
+        "I hear the words \"I love you\" out loud",
+        "someone notices my effort and says so",
+        "a partner leaves me an encouraging note",
+        "someone speaks kindly about me to others",
+        "I'm reassured with warm, supportive words",
+        "a partner thanks me sincerely for something I did",
+        "someone tells me what they appreciate about me",
+        "I get a genuine \"you did a great job\"",
+        "a partner encourages me when I'm doubting myself",
+        "someone puts their feelings for me into words",
+    ],
+    "quality": [
+        "a partner sets everything aside to be fully present with me",
+        "we spend uninterrupted time together",
+        "someone gives me their complete, undistracted attention",
+        "we take a walk or a trip together, just the two of us",
+        "a partner really listens without checking their phone",
+        "we share a long, unhurried conversation",
+        "someone makes dedicated time for me in a busy week",
+        "we do an activity together that we both enjoy",
+        "a partner plans a day for just the two of us",
+        "we sit together and talk about how we're really doing",
+        "someone chooses to be with me over other plans",
+        "we have a regular time that's ours alone",
+    ],
+    "gifts": [
+        "someone surprises me with a thoughtful gift",
+        "a partner brings me a small token that made them think of me",
+        "I receive a present chosen just for me",
+        "someone remembers something I wanted and gets it for me",
+        "a partner gives me a meaningful keepsake",
+        "I get a surprise treat for no special reason",
+        "someone marks an occasion with a gift",
+        "a partner picks up something I mentioned in passing",
+        "I receive a gift that shows real thought went into it",
+        "someone hands me a little something to brighten my day",
+        "a partner saves a memento from a moment we shared",
+        "I'm given a present that reflects who I am",
+    ],
+    "service": [
+        "a partner helps me with a task without being asked",
+        "someone takes a chore off my plate",
+        "a partner does something practical to make my day easier",
+        "someone steps in to help when I'm overwhelmed",
+        "a partner handles something so I don't have to",
+        "someone sorts out a problem for me",
+        "a partner pitches in with the work I'm dreading",
+        "someone goes out of their way to lighten my load",
+        "a partner runs an errand to help me out",
+        "someone cooks or cleans to take care of me",
+        "a partner notices what needs doing and just does it",
+        "someone helps me finish something I'm stuck on",
+    ],
+    "touch": [
+        "a partner holds my hand",
+        "someone greets me with a warm hug",
+        "a partner sits close so we're physically near",
+        "I get a reassuring touch on the shoulder or arm",
+        "a partner cuddles up with me",
+        "someone hugs me when I've had a hard day",
+        "a partner puts an arm around me",
+        "we're close enough to feel each other's presence",
+        "someone gives me a spontaneous embrace",
+        "a partner rests a hand on me affectionately",
+        "we sit shoulder to shoulder",
+        "a partner greets me with a kiss hello or goodbye",
+    ],
+}
+
+# The official quiz's exact question-by-question pairing sequence and option
+# order, reverse-engineered from the live adult/relationship quiz. It is a
+# perfectly balanced round-robin: each language appears in 12 of the 30
+# questions and each of the 10 language pairings appears 3 times. (The
+# statement wording in LOVE_STATEMENTS is original — only this structure is
+# mirrored.) Each tuple is (option-1 language, option-2 language).
+LOVE_SEQUENCE = [
+    ("words", "quality"), ("service", "touch"), ("quality", "gifts"),
+    ("service", "words"), ("quality", "service"), ("gifts", "touch"),
+    ("touch", "words"), ("service", "gifts"), ("touch", "quality"),
+    ("words", "gifts"), ("gifts", "service"), ("touch", "quality"),
+    ("words", "service"), ("touch", "gifts"), ("quality", "touch"),
+    ("words", "quality"), ("service", "words"), ("touch", "service"),
+    ("gifts", "quality"), ("words", "gifts"), ("gifts", "words"),
+    ("quality", "service"), ("service", "touch"), ("quality", "gifts"),
+    ("touch", "words"), ("words", "touch"), ("service", "quality"),
+    ("gifts", "touch"), ("quality", "words"), ("service", "gifts"),
+]
+
+LOVE_INFO = {
+    "words": (
+        "You feel most loved through words — encouragement, appreciation, and kind, "
+        "affirming things said out loud. Compliments and an unprompted \"I love you\" "
+        "land deeply, while thoughtless or harsh words can cut more than they might "
+        "for others. Hearing why you're valued matters as much as knowing it.",
+        [
+            "Tell partners plainly that words matter to you — specific praise beats generic niceties.",
+            "Keep a note of kind things people have said, to revisit on hard days.",
+            "Offer the affirmation you crave to others; it tends to come back.",
+        ],
+    ),
+    "quality": (
+        "You feel most loved through undivided attention — real presence, eye "
+        "contact, and shared moments without distraction. A partner setting aside "
+        "their phone to truly be with you can mean more than almost anything. "
+        "Distracted or interrupted time together can quietly feel like rejection.",
+        [
+            "Protect a regular, device-free time that belongs to your closest relationships.",
+            "Name the kind of time you want — a walk, a meal, a real conversation.",
+            "Quality beats quantity: short, fully-present moments outweigh long distracted ones.",
+        ],
+    ),
+    "gifts": (
+        "You feel most loved through thoughtful gifts — not for their price, but for "
+        "the thought behind them. A small token that says \"I was thinking of you\" "
+        "speaks loudly. Forgotten occasions or absent gestures can feel like being "
+        "overlooked, even when that isn't the intent.",
+        [
+            "Help partners understand it's the thought, not the cost, that counts.",
+            "Keep a running list of things you'd love, and share it when asked.",
+            "Notice and keep the small tokens you receive — they carry the message.",
+        ],
+    ),
+    "service": (
+        "You feel most loved when people do things for you — practical help that "
+        "eases your load. Actions speak louder than words; a partner who notices "
+        "what needs doing and simply does it is saying \"I've got you.\" Broken "
+        "promises or leaving shared work undone can sting.",
+        [
+            "Ask directly for the specific help that would mean the most.",
+            "Recognize and thank people for the acts of service they already do.",
+            "Let people help — accepting support is part of receiving this language.",
+        ],
+    ),
+    "touch": (
+        "You feel most loved through physical closeness — a hug, a held hand, a hand "
+        "on the shoulder, sitting near. Touch reassures you and communicates care "
+        "directly and immediately. Physical distance or coldness can feel especially "
+        "hard to be on the receiving end of.",
+        [
+            "Tell partners that affectionate touch is how you most feel connected.",
+            "Build in small daily moments of contact — a hug hello, sitting close.",
+            "Communicate your needs and boundaries around touch openly.",
+        ],
+    ),
+}
+
+
+def build_love_questions():
+    """30 forced-choice questions; returns list of (langA, textA, langB, textB).
+    Follows the official quiz's exact pairing sequence (LOVE_SEQUENCE), pulling
+    the next unused statement for each language as it comes up."""
+    counters = {k: 0 for k in LOVE_KEYS}
+    questions = []
+    for x, y in LOVE_SEQUENCE:
+        sx = LOVE_STATEMENTS[x][counters[x]]; counters[x] += 1
+        sy = LOVE_STATEMENTS[y][counters[y]]; counters[y] += 1
+        questions.append((x, sx, y, sy))
+    return questions
+
+
+LOVE_QUESTIONS = build_love_questions()
+
+
+def love_compute(answers):
+    """answers: list of chosen language keys → dict of counts for all 5."""
+    counts = Counter(answers)
+    return {k: counts.get(k, 0) for k in LOVE_KEYS}
+
+
+def love_primary(scores):
+    top = max(scores.values()) if scores else 0
+    return [k for k in LOVE_KEYS if scores.get(k, 0) == top]
+
+
+def render_love(scores, title=None):
+    total = sum(scores.values()) or 1
+    ranked = sorted(LOVE_KEYS, key=lambda k: scores[k], reverse=True)
+    primary = love_primary(scores)
+    print(f"\n{DIM}── {title or 'computing results'} ──{RESET}\n")
+    for k in ranked:
+        c = scores[k]
+        pct = round(c / total * 100)
+        bar = love_bar(c)
+        star = " ★" if k in primary else ""
+        print(f"{LOVE_COLORS[k]}{LOVE_NAMES[k]:<22}{RESET} {c:>2} pts ({pct:>2}%) "
+              f"{LOVE_COLORS[k]}{bar}{RESET}{AMBER}{star}{RESET}")
+    pk = primary[0]
+    color = LOVE_COLORS[pk]
+    if len(primary) > 1:
+        joined = " & ".join(LOVE_NAMES[k] for k in primary)
+        print(f"\nRESULT: {color}{BOLD}★ {joined} (tie) ★{RESET}\n")
+    else:
+        print(f"\nRESULT: {color}{BOLD}★ {LOVE_NAMES[pk]} ★{RESET}\n")
+    desc, tips = LOVE_INFO[pk]
+    print(f"{DIM}{wrap(desc)}{RESET}\n")
+    print(f"{CYAN}things that may help:{RESET}")
+    for tip in tips:
+        print(f"{DIM}{wrap(tip, width=70, first='  - ', rest='    ')}{RESET}")
+
+
+def love_bar(count, width=12):
+    filled = round(count / 12 * width)
+    return f"[{'█' * filled}{'░' * (width - filled)}]"
+
+
+# ════════════════════════════════════════════════════════════════════════
+#  BIG FIVE  (real public-domain IPIP-50 Big-Five Factor Markers)
+# ════════════════════════════════════════════════════════════════════════
+BIG5_FACTORS = ["O", "C", "E", "A", "N"]
+BIG5_INFO = {
+    "O": ("Openness", CYAN, "Imagination, curiosity, and openness to new ideas, art, and experiences."),
+    "C": ("Conscientiousness", GREEN, "Organization, self-discipline, and goal-directed reliability."),
+    "E": ("Extraversion", AMBER, "Sociability, assertiveness, and energy drawn from the outer world."),
+    "A": ("Agreeableness", BLUE, "Compassion, cooperation, and trust toward other people."),
+    "N": ("Neuroticism", PINK, "Tendency toward stress, worry, and emotional reactivity (vs. calm stability)."),
+}
+# (factor, key, text). key +1 = scored toward the factor; -1 = reverse-keyed.
+BIG5_QUESTIONS = [
+    ("E", 1, "Am the life of the party."),
+    ("A", -1, "Feel little concern for others."),
+    ("C", 1, "Am always prepared."),
+    ("N", 1, "Get stressed out easily."),
+    ("O", 1, "Have a rich vocabulary."),
+    ("E", -1, "Don't talk a lot."),
+    ("A", 1, "Am interested in people."),
+    ("C", -1, "Leave my belongings around."),
+    ("N", -1, "Am relaxed most of the time."),
+    ("O", -1, "Have difficulty understanding abstract ideas."),
+    ("E", 1, "Feel comfortable around people."),
+    ("A", -1, "Insult people."),
+    ("C", 1, "Pay attention to details."),
+    ("N", 1, "Worry about things."),
+    ("O", 1, "Have a vivid imagination."),
+    ("E", -1, "Keep in the background."),
+    ("A", 1, "Sympathize with others' feelings."),
+    ("C", -1, "Make a mess of things."),
+    ("N", -1, "Seldom feel blue."),
+    ("O", -1, "Am not interested in abstract ideas."),
+    ("E", 1, "Start conversations."),
+    ("A", -1, "Am not interested in other people's problems."),
+    ("C", 1, "Get chores done right away."),
+    ("N", 1, "Am easily disturbed."),
+    ("O", 1, "Have excellent ideas."),
+    ("E", -1, "Have little to say."),
+    ("A", 1, "Have a soft heart."),
+    ("C", -1, "Often forget to put things back in their proper place."),
+    ("N", 1, "Get upset easily."),
+    ("O", -1, "Do not have a good imagination."),
+    ("E", 1, "Talk to a lot of different people at parties."),
+    ("A", -1, "Am not really interested in others."),
+    ("C", 1, "Like order."),
+    ("N", 1, "Change my mood a lot."),
+    ("O", 1, "Am quick to understand things."),
+    ("E", -1, "Don't like to draw attention to myself."),
+    ("A", 1, "Take time out for others."),
+    ("C", -1, "Shirk my duties."),
+    ("N", 1, "Have frequent mood swings."),
+    ("O", 1, "Use difficult words."),
+    ("E", 1, "Don't mind being the center of attention."),
+    ("A", 1, "Feel others' emotions."),
+    ("C", 1, "Follow a schedule."),
+    ("N", 1, "Get irritated easily."),
+    ("O", 1, "Spend time reflecting on things."),
+    ("E", -1, "Am quiet around strangers."),
+    ("A", 1, "Make people feel at ease."),
+    ("C", 1, "Am exacting in my work."),
+    ("N", 1, "Often feel blue."),
+    ("O", 1, "Am full of ideas."),
+]
+
+
+def big5_compute(answers):
+    total = {f: 0 for f in BIG5_FACTORS}
+    count = {f: 0 for f in BIG5_FACTORS}
+    for (f, k, _), v in zip(BIG5_QUESTIONS, answers):
+        if v is None:
+            continue
+        total[f] += v if k > 0 else 6 - v
+        count[f] += 1
+    return {f: round((total[f] - count[f]) / (count[f] * 4) * 100) for f in BIG5_FACTORS}
+
+
+def pct_bar(pct, width=24):
+    filled = round(pct / 100 * width)
+    return f"[{'█' * filled}{'░' * (width - filled)}]"
+
+
+def render_bigfive(pct, title=None):
+    print(f"\n{DIM}── {title or 'computing results'} ──{RESET}\n")
+    print(f"{BOLD}Big Five (OCEAN){RESET}\n")
+    for f in BIG5_FACTORS:
+        name, color, _ = BIG5_INFO[f]
+        print(f"{color}{name:<18}{RESET} {pct[f]:>3}%  {color}{pct_bar(pct[f])}{RESET}")
+    print(f"\n{CYAN}what each dimension means:{RESET}")
+    for f in BIG5_FACTORS:
+        name, _, desc = BIG5_INFO[f]
+        print(f"{DIM}{wrap(name + ' — ' + desc, width=70, first='  - ', rest='    ')}{RESET}")
+
+
+# ════════════════════════════════════════════════════════════════════════
+#  DARK TRIAD  (SD3 structure: 9 items each; original wording)
+# ════════════════════════════════════════════════════════════════════════
+DT_TRAITS = ["mach", "narc", "psych"]
+DT_INFO = {
+    "mach": ("Machiavellianism", BLUE, "A strategic, calculating stance toward others — manipulation, planning, and cynicism about human nature."),
+    "narc": ("Narcissism", AMBER, "Grandiosity, entitlement, and a need for admiration, status, and recognition."),
+    "psych": ("Psychopathy", PINK, "Impulsivity, thrill-seeking, low empathy, and callousness toward others."),
+}
+# (trait, key, text). key +1 = scored toward trait; -1 = reverse-keyed.
+DT_QUESTIONS = [
+    ("mach", 1, "It's smart to keep information back until you can use it to your advantage."),
+    ("mach", 1, "I'm willing to flatter people to get them on my side."),
+    ("mach", 1, "Most people can be manipulated if you know their weak spots."),
+    ("mach", 1, "I prefer to work behind the scenes rather than confront people directly."),
+    ("mach", 1, "It's wise to keep your real intentions to yourself."),
+    ("mach", 1, "I like to plan several moves ahead when dealing with people."),
+    ("mach", 1, "It's naive to trust people completely."),
+    ("mach", -1, "I'd rather be honest and upfront than play strategic games."),
+    ("mach", 1, "Getting ahead sometimes means bending the truth."),
+    ("narc", 1, "I like being the center of attention."),
+    ("narc", 1, "People should recognize how capable I am."),
+    ("narc", 1, "I expect to be treated as someone special."),
+    ("narc", 1, "I enjoy being complimented and admired."),
+    ("narc", 1, "I'm more talented than most people around me."),
+    ("narc", 1, "I dislike blending in as one of the crowd."),
+    ("narc", -1, "I don't really need others to notice me."),
+    ("narc", -1, "I find it easy to feel humble about my abilities."),
+    ("narc", 1, "I deserve more recognition than I usually get."),
+    ("psych", 1, "I'll say what I want without worrying who it hurts."),
+    ("psych", 1, "I like taking risks even when things could backfire."),
+    ("psych", 1, "People who get taken advantage of usually had it coming."),
+    ("psych", 1, "I rarely feel guilty after hurting someone."),
+    ("psych", 1, "I act on impulse without thinking about the consequences."),
+    ("psych", 1, "Getting back at people who cross me feels satisfying."),
+    ("psych", -1, "I avoid reckless or dangerous situations."),
+    ("psych", -1, "I feel real concern when others are suffering."),
+    ("psych", 1, "Rules are often there to be broken."),
+]
+
+
+def dt_compute(answers):
+    total = {t: 0 for t in DT_TRAITS}
+    count = {t: 0 for t in DT_TRAITS}
+    for (t, k, _), v in zip(DT_QUESTIONS, answers):
+        if v is None:
+            continue
+        total[t] += v if k > 0 else 6 - v
+        count[t] += 1
+    mean = {t: total[t] / count[t] for t in DT_TRAITS}
+    pct = {t: round((mean[t] - 1) / 4 * 100) for t in DT_TRAITS}
+    return mean, pct
+
+
+def render_darktriad(mean, pct, title=None):
+    print(f"\n{DIM}── {title or 'computing results'} ──{RESET}\n")
+    print(f"{BOLD}Dark Triad profile{RESET}  {DIM}(mean 1–5; normal-range traits, not a diagnosis){RESET}\n")
+    for t in DT_TRAITS:
+        name, color, _ = DT_INFO[t]
+        print(f"{color}{name:<18}{RESET} {mean[t]:.1f}/5 {pct[t]:>3}%  {color}{pct_bar(pct[t])}{RESET}")
+    print(f"\n{CYAN}what each trait means:{RESET}")
+    for t in DT_TRAITS:
+        name, _, desc = DT_INFO[t]
+        print(f"{DIM}{wrap(name + ' — ' + desc, width=70, first='  - ', rest='    ')}{RESET}")
+    print(f"\n{DIM}This is a brief self-reflection screen inspired by the Short Dark Triad.\n"
+          f"It is not a clinical or diagnostic instrument.{RESET}")
+
+
+# ════════════════════════════════════════════════════════════════════════
+#  PERSONALITY TYPE  (16Personalities structure: 4 axes + Identity;
+#  original wording. Output e.g. INFJ-T.)
+# ════════════════════════════════════════════════════════════════════════
+MBTI_AXES = {"EI": ("E", "I"), "SN": ("S", "N"), "TF": ("T", "F"), "JP": ("J", "P"), "AT": ("A", "T")}
+MBTI_AXIS_NAMES = {"EI": "Mind", "SN": "Energy", "TF": "Nature", "JP": "Tactics", "AT": "Identity"}
+MBTI_POLE_NAMES = {"E": "Extraverted", "I": "Introverted", "S": "Observant", "N": "Intuitive",
+                   "T": "Thinking", "F": "Feeling", "J": "Judging", "P": "Prospecting"}
+# (axis, pole, text). pole +1 = agreement leans to the first letter of the axis.
+MBTI_QUESTIONS = [
+    ("EI", 1, "I feel energized after spending time in a lively group."),
+    ("EI", -1, "I'd rather have a few deep conversations than work a whole room."),
+    ("EI", 1, "I often strike up conversations with people I don't know."),
+    ("EI", -1, "I need quiet time alone to recharge."),
+    ("EI", 1, "I tend to think out loud and process by talking."),
+    ("EI", -1, "Big social events leave me drained."),
+    ("SN", 1, "I focus on concrete facts more than theories."),
+    ("SN", -1, "I'm drawn to abstract ideas and what could be."),
+    ("SN", 1, "I trust practical experience over hunches."),
+    ("SN", -1, "I often notice patterns and hidden meanings."),
+    ("SN", 1, "I prefer clear step-by-step instructions to figuring it out as I go."),
+    ("SN", -1, "My imagination often runs ahead to future possibilities."),
+    ("TF", 1, "I make decisions with logic more than feelings."),
+    ("TF", -1, "Staying true to people's feelings matters more to me than being right."),
+    ("TF", 1, "I value fairness and consistency over making exceptions."),
+    ("TF", -1, "I'm quick to empathize with how others feel."),
+    ("TF", 1, "I can give critical feedback without much discomfort."),
+    ("TF", -1, "Harmony in a group matters a great deal to me."),
+    ("JP", 1, "I like to have things planned and settled."),
+    ("JP", -1, "I prefer to keep my options open and stay flexible."),
+    ("JP", 1, "I make lists and work steadily ahead of deadlines."),
+    ("JP", -1, "I tend to work in bursts of energy near the deadline."),
+    ("JP", 1, "I feel uneasy when plans are left loose."),
+    ("JP", -1, "I enjoy improvising rather than following a plan."),
+    ("AT", 1, "I stay confident and even-keeled under pressure."),
+    ("AT", -1, "I tend to worry about my decisions after I've made them."),
+    ("AT", 1, "I rarely second-guess myself."),
+    ("AT", -1, "I'm sensitive to stress and criticism."),
+    ("AT", 1, "I feel secure in my abilities most of the time."),
+    ("AT", -1, "I often feel I could have done better."),
+]
+# (name, color, predicate on 4-letter type, description)
+MBTI_GROUPS = [
+    ("Analysts", CYAN, lambda t: t[1] == "N" and t[2] == "T",
+     "Analysts — independent, strategic, and curious, drawn to logic, competence, and big-picture problem-solving."),
+    ("Diplomats", GREEN, lambda t: t[1] == "N" and t[2] == "F",
+     "Diplomats — empathetic and idealistic, guided by values, meaning, and helping people grow."),
+    ("Sentinels", BLUE, lambda t: t[1] == "S" and t[3] == "J",
+     "Sentinels — practical and dependable, valuing structure, responsibility, and getting things done."),
+    ("Explorers", AMBER, lambda t: t[1] == "S" and t[3] == "P",
+     "Explorers — spontaneous and hands-on, adaptable and energized by action and the present."),
+]
+
+
+def mbti_pole_name(letter, axis):
+    if axis == "AT":
+        return "Assertive" if letter == "A" else "Turbulent"
+    return MBTI_POLE_NAMES[letter]
+
+
+def mbti_compute(answers):
+    score = {ax: 0 for ax in MBTI_AXES}
+    count = {ax: 0 for ax in MBTI_AXES}
+    for (ax, p, _), v in zip(MBTI_QUESTIONS, answers):
+        if v is None:
+            continue
+        score[ax] += p * (v - 3)
+        count[ax] += 1
+    axes = {}
+    for ax, (pos, neg) in MBTI_AXES.items():
+        mx = count[ax] * 2
+        pct_pos = (score[ax] + mx) / (2 * mx) * 100 if mx else 50
+        letter = pos if pct_pos >= 50 else neg
+        lean = round(max(pct_pos, 100 - pct_pos))
+        axes[ax] = (letter, lean)
+    type4 = axes["EI"][0] + axes["SN"][0] + axes["TF"][0] + axes["JP"][0]
+    full = type4 + "-" + axes["AT"][0]
+    return {"type": type4, "full": full, "axes": axes}
+
+
+def mbti_group(type4):
+    for name, color, pred, desc in MBTI_GROUPS:
+        if pred(type4):
+            return name, color, desc
+    return MBTI_GROUPS[0][0], MBTI_GROUPS[0][1], MBTI_GROUPS[0][3]
+
+
+def render_mbti(res, title=None):
+    name, color, desc = mbti_group(res["type"])
+    print(f"\n{DIM}── {title or 'computing results'} ──{RESET}\n")
+    print(f"{color}{BOLD}★ {res['full']} ★{RESET}   {DIM}{name}{RESET}\n")
+    for ax in MBTI_AXES:
+        letter, lean = res["axes"][ax]
+        label = f"{MBTI_AXIS_NAMES[ax]}: {mbti_pole_name(letter, ax)}"
+        print(f"{color}{label:<26}{RESET} {lean:>3}%  {color}{pct_bar(lean)}{RESET}")
+    print(f"\n{DIM}{wrap(desc)}{RESET}\n")
+    print(f"{CYAN}your letters:{RESET}")
+    for ax in MBTI_AXES:
+        letter, _ = res["axes"][ax]
+        print(f"{DIM}  - {letter} — {mbti_pole_name(letter, ax)} ({MBTI_AXIS_NAMES[ax]}){RESET}")
+    print(f"\n{DIM}An original personality-type quiz modeled on the 16Personalities structure.\n"
+          f"Not affiliated with that test.{RESET}")
+
+
+# ════════════════════════════════════════════════════════════════════════
+#  RICE PURITY  (100-item life-experience checklist; score = 100 − checked.
+#  Original, deliberately non-graphic wording; same order as the web version.)
+# ════════════════════════════════════════════════════════════════════════
+RICE_QUESTIONS = [
+    "Held hands with someone romantically.", "Been on a date.", "Had a crush on someone.", "Been in a romantic relationship.",
+    "Kissed someone romantically.", "Kissed someone on a first date.", "Slow danced with someone.", "Written someone a love note or letter.",
+    "Confessed feelings to a crush.", "Been turned down after asking someone out.", "Had your heart broken.", "Broken up with someone.",
+    "Dated more than one person at the same time.", "Cheated on a partner.", "Been cheated on.", "Made out with someone.",
+    "Given or received a hickey.", "Cuddled with someone overnight.", "Fallen asleep beside a romantic partner.", "Said \"I love you\" to a partner.",
+    "Skipped a class or lecture.", "Lied to a parent or guardian.", "Snuck out of the house.", "Stayed out past curfew on purpose.",
+    "Told a serious lie to stay out of trouble.", "Cheated on a test or assignment.", "Been sent to the principal's office or equivalent.", "Been suspended or expelled.",
+    "Pulled an all-nighter.", "Forged a signature.", "Tried alcohol.", "Been drunk.",
+    "Had a hangover.", "Felt sick from drinking.", "Smoked a cigarette.", "Used a vape or e-cigarette.",
+    "Tried cannabis.", "Been high.", "Tried a recreational drug other than cannabis.", "Used a prescription drug not prescribed to you.",
+    "Been to a party that got out of hand.", "Played a drinking game.", "Been to a bar or club.", "Used a fake ID.",
+    "Gotten a tattoo.", "Gotten a piercing beyond standard ear lobes.", "Gone skinny dipping.", "Been undressed in a semi-public setting.",
+    "Sent a flirty or suggestive message.", "Sent or received a revealing photo.", "Met a partner's family.", "Lived with a romantic partner.",
+    "Been engaged or married.", "Taken a romantic trip with a partner.", "Had a long-distance relationship.", "Reconnected with an ex.",
+    "Kissed more than one person in a single day.", "Kissed someone whose name you didn't know.", "Had a casual, no-strings relationship.", "Spent the night with someone you'd just met.",
+    "Been physically intimate with someone.", "Been physically intimate with more than one person.", "Been intimate somewhere other than a bedroom.", "Been intimate outdoors.",
+    "Been interrupted while being intimate.", "Watched adult content.", "Visited an adult-oriented venue.", "Been part of a love triangle.",
+    "Kept a relationship secret from friends or family.", "Lied about your relationship status.", "Gotten back together after a bad breakup.", "Stopped replying to someone to end things (ghosted).",
+    "Been ghosted.", "Had a crush on a friend's partner.", "Driven over the speed limit on purpose.", "Gotten a traffic ticket.",
+    "Been in a car accident.", "Driven without a valid license.", "Been pulled over by police.", "Been questioned by police.",
+    "Been arrested or detained.", "Spent a night away from home without telling anyone.", "Gotten into a physical fight.", "Taken something from a store without paying.",
+    "Damaged or vandalized property.", "Trespassed somewhere off-limits.", "Set off fireworks where you weren't supposed to.", "Gambled for money.",
+    "Been kicked out of a venue or event.", "Lied on an official form.", "Gotten hurt doing something risky.", "Snuck into a movie, show, or event.",
+    "Stayed up to watch the sunrise after being out all night.", "Gone to a concert or festival.", "Kept a secret that could get someone in trouble.", "Made a prank call.",
+    "Regretted something you did while out at night.", "Done something you'd never tell your parents.", "Sworn at someone in anger.", "Done something on this list mostly on a dare.",
+]
+RICE_BANDS = [
+    (98, "Remarkably innocent", "You've kept things very tame so far — a famously high purity score."),
+    (85, "Pretty innocent", "Mostly on the wholesome side, with a few experiences under your belt."),
+    (70, "A balanced amount of experience", "A pretty typical mix of innocence and lived experience."),
+    (50, "Experienced", "You've been around the block a fair bit and tried plenty of things."),
+    (30, "Very experienced", "You've packed a lot of living into your story."),
+    (0, "You've lived a lot", "Very little on this list is new to you — a low purity score, worn however you like."),
+]
+
+
+def rice_compute(answers):
+    yes = sum(1 for a in answers if a)
+    return 100 - yes, yes
+
+
+def rice_band(score):
+    for mn, label, desc in RICE_BANDS:
+        if score >= mn:
+            return label, desc
+    return RICE_BANDS[-1][1], RICE_BANDS[-1][2]
+
+
+def render_rice(score, yes, title=None):
+    label, desc = rice_band(score)
+    print(f"\n{DIM}── {title or 'computing results'} ──{RESET}\n")
+    print(f"{BLUE}{BOLD}★ {score} / 100 ★{RESET}   {DIM}{label}{RESET}\n")
+    print(f"{BLUE}{pct_bar(score)}{RESET}\n")
+    print(f"{DIM}{wrap(desc)}{RESET}")
+    print(f"\n{DIM}You checked {yes} of 100 items. A higher score means more 'innocent'.\n"
+          f"This is a lighthearted checklist, not a judgment of any kind.{RESET}")
+
+
+# ════════════════════════════════════════════════════════════════════════
+#  SHARED: input, storage, rendering helpers
+# ════════════════════════════════════════════════════════════════════════
+def getch():
+    if not sys.stdin.isatty():
+        line = sys.stdin.readline()
+        if not line:
+            sys.exit(0)
+        return line.strip()[:1] or "\n"
+    import termios
+    import tty
+    fd = sys.stdin.fileno()
+    old = termios.tcgetattr(fd)
+    try:
+        tty.setraw(fd)
+        ch = sys.stdin.read(1)
+    finally:
+        termios.tcsetattr(fd, termios.TCSADRAIN, old)
+    if ch == "\x03":
+        raise KeyboardInterrupt
+    return ch
+
+
+def ask_line(prompt):
+    try:
+        return input(prompt).strip()
+    except EOFError:
+        return ""
+
+
+def clear():
+    if sys.stdout.isatty():
+        print("\033[2J\033[H", end="")
+
+
+def progress_bar(done, total, width=20):
+    filled = round(done / total * width)
+    return f"[{'█' * filled}{'░' * (width - filled)}] {done}/{total}"
+
+
+def score_bar(score, width=24):
+    filled = round((score - 1) / 4 * width)
+    return f"[{'█' * filled}{'░' * (width - filled)}]"
+
+
+def wrap(text, width=74, first="", rest=""):
+    words, lines, cur = text.split(), [], ""
+    for word in words:
+        if cur and len(cur) + 1 + len(word) > width:
+            lines.append(cur)
+            cur = word
+        else:
+            cur = f"{cur} {word}" if cur else word
+    if cur:
+        lines.append(cur)
+    return "\n".join((first if i == 0 else rest) + line for i, line in enumerate(lines))
+
+
+def profiles_path():
+    here = os.path.dirname(os.path.realpath(__file__))
+    return os.path.join(here, "profiles.json")
+
+
+def load_profiles():
+    try:
+        with open(profiles_path(), encoding="utf-8") as f:
+            data = json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError, OSError):
+        return []
+    if isinstance(data, dict) and isinstance(data.get("profiles"), list):
+        return data["profiles"]
+    return []
+
+
+def write_profiles(profiles):
+    with open(profiles_path(), "w", encoding="utf-8") as f:
+        json.dump({"version": PROFILES_VERSION, "profiles": profiles}, f,
+                  indent=2, ensure_ascii=False)
+
+
+# ════════════════════════════════════════════════════════════════════════
+#  QUIZ FLOW
+# ════════════════════════════════════════════════════════════════════════
+def ask_likert(texts):
+    """Agree/disagree 1–5 questions. Takes a list of statement strings;
+    returns a list of ints. Used by attachment, big five, dark triad, type."""
+    answers = [None] * len(texts)
+    i = 0
+    while i < len(texts):
+        text = texts[i]
+        print(f"\n{DIM}{progress_bar(i, len(texts))}{RESET}")
+        print(f"{GREEN}?{RESET} {BOLD}Q{i + 1}. {text}{RESET}\n")
+        for n, label in enumerate(SCALE, 1):
+            print(f"  {AMBER}[{n}]{RESET} {label}")
+        nav = "press 1-5 to answer · B back · Q quit" if i else "press 1-5 to answer · Q quit"
+        print(f"{DIM}{nav}{RESET}")
+        while True:
+            ch = getch()
+            if ch in "12345":
+                answers[i] = int(ch)
+                print(f"{GREEN}> {ch}  — {SCALE[int(ch) - 1]}{RESET}")
+                i += 1
+                break
+            if ch.lower() == "b" and i > 0:
+                i -= 1
+                answers[i] = None
+                print(f"{DIM}> back to Q{i + 1}{RESET}")
+                break
+            if ch.lower() == "q":
+                print(f"{DIM}bye.{RESET}")
+                sys.exit(0)
+    return answers
+
+
+def ask_choice(questions):
+    """Love-language forced choice. Returns list of chosen language keys."""
+    answers = [None] * len(questions)
+    i = 0
+    while i < len(questions):
+        langA, textA, langB, textB = questions[i]
+        print(f"\n{DIM}{progress_bar(i, len(questions))}{RESET}")
+        print(f"{GREEN}?{RESET} {BOLD}It's more meaningful to me when…{RESET}\n")
+        print(f"  {AMBER}[1]{RESET} {textA}")
+        print(f"  {AMBER}[2]{RESET} {textB}")
+        nav = "press 1 or 2 · B back · Q quit" if i else "press 1 or 2 · Q quit"
+        print(f"{DIM}{nav}{RESET}")
+        while True:
+            ch = getch()
+            if ch in "12":
+                answers[i] = langA if ch == "1" else langB
+                chosen = textA if ch == "1" else textB
+                print(f"{GREEN}> {ch}  — {chosen}{RESET}")
+                i += 1
+                break
+            if ch.lower() == "b" and i > 0:
+                i -= 1
+                answers[i] = None
+                print(f"{DIM}> back to Q{i + 1}{RESET}")
+                break
+            if ch.lower() == "q":
+                print(f"{DIM}bye.{RESET}")
+                sys.exit(0)
+    return answers
+
+
+def ask_binary(items):
+    """Rice-purity yes/no checklist. Returns a list of bools (True = have done it)."""
+    answers = [None] * len(items)
+    i = 0
+    while i < len(items):
+        print(f"\n{DIM}{progress_bar(i, len(items))}{RESET}")
+        print(f"{GREEN}?{RESET} {BOLD}Q{i + 1}. {items[i]}{RESET}\n")
+        print(f"  {AMBER}[1]{RESET} Yes, I have")
+        print(f"  {AMBER}[2]{RESET} No")
+        nav = "press 1 or 2 · B back · Q quit" if i else "press 1 or 2 · Q quit"
+        print(f"{DIM}{nav}{RESET}")
+        while True:
+            ch = getch()
+            if ch in "12":
+                answers[i] = (ch == "1")
+                print(f"{GREEN}> {'Yes' if ch == '1' else 'No'}{RESET}")
+                i += 1
+                break
+            if ch.lower() == "b" and i > 0:
+                i -= 1
+                answers[i] = None
+                print(f"{DIM}> back to Q{i + 1}{RESET}")
+                break
+            if ch.lower() == "q":
+                print(f"{DIM}bye.{RESET}")
+                sys.exit(0)
+    return answers
+
+
+def run_attachment():
+    while True:
+        print(f"\n{DIM}── Attachment Style: 24 questions ──{RESET}")
+        answers = ask_likert([q[0] for q in ATTACH_QUESTIONS])
+        anxiety, avoidance = attach_compute(answers)
+        style_key = attach_classify(anxiety, avoidance)
+        render_attachment(anxiety, avoidance, style_key)
+        profile = {
+            "quiz": "attachment",
+            "style": style_key,
+            "anxiety": round(anxiety, 2),
+            "avoidance": round(avoidance, 2),
+            "answers": answers,
+        }
+        if post_result_menu(profile) == "retake":
+            continue
+        return
+
+
+def run_love():
+    while True:
+        print(f"\n{DIM}── Love Language: 30 questions ──{RESET}")
+        answers = ask_choice(LOVE_QUESTIONS)
+        scores = love_compute(answers)
+        render_love(scores)
+        profile = {
+            "quiz": "love",
+            "primary": love_primary(scores)[0],
+            "scores": scores,
+            "answers": answers,
+        }
+        if post_result_menu(profile) == "retake":
+            continue
+        return
+
+
+def run_bigfive():
+    while True:
+        print(f"\n{DIM}── Big Five (OCEAN): 50 questions ──{RESET}")
+        answers = ask_likert([q[2] for q in BIG5_QUESTIONS])
+        pct = big5_compute(answers)
+        render_bigfive(pct)
+        profile = {"quiz": "bigfive", "pct": pct, "answers": answers}
+        if post_result_menu(profile) == "retake":
+            continue
+        return
+
+
+def run_darktriad():
+    while True:
+        print(f"\n{DIM}── Dark Triad: 27 questions ──{RESET}")
+        answers = ask_likert([q[2] for q in DT_QUESTIONS])
+        mean, pct = dt_compute(answers)
+        render_darktriad(mean, pct)
+        profile = {"quiz": "darktriad", "mean": {t: round(mean[t], 2) for t in DT_TRAITS},
+                   "pct": pct, "answers": answers}
+        if post_result_menu(profile) == "retake":
+            continue
+        return
+
+
+def run_mbti():
+    while True:
+        print(f"\n{DIM}── Personality Type: 30 questions ──{RESET}")
+        answers = ask_likert([q[2] for q in MBTI_QUESTIONS])
+        res = mbti_compute(answers)
+        render_mbti(res)
+        profile = {"quiz": "mbti", "type": res["type"], "full": res["full"],
+                   "axes": {ax: list(res["axes"][ax]) for ax in res["axes"]}, "answers": answers}
+        if post_result_menu(profile) == "retake":
+            continue
+        return
+
+
+def run_rice():
+    while True:
+        print(f"\n{DIM}── Rice Purity: 100 questions ──{RESET}")
+        answers = ask_binary(RICE_QUESTIONS)
+        score, yes = rice_compute(answers)
+        render_rice(score, yes)
+        profile = {"quiz": "rice", "score": score, "answers": answers}
+        if post_result_menu(profile) == "retake":
+            continue
+        return
+
+
+def post_result_menu(profile):
+    """Returns 'retake' to re-run, or None to go back to the menu."""
+    while True:
+        print(f"\npress {AMBER}[S]{RESET} save · {AMBER}[A]{RESET} answers · {AMBER}[R]{RESET} retake · "
+              f"{AMBER}[M]{RESET} menu · {AMBER}[Q]{RESET} quit")
+        ch = getch().lower()
+        if ch == "s":
+            save_profile(profile)
+        elif ch == "a":
+            show_answers(profile)
+        elif ch == "r":
+            return "retake"
+        elif ch == "m":
+            return None
+        elif ch == "q":
+            print(f"{DIM}bye.{RESET}")
+            sys.exit(0)
+
+
+# ════════════════════════════════════════════════════════════════════════
+#  PROFILES
+# ════════════════════════════════════════════════════════════════════════
+def people_list(profiles):
+    """Unique profile names in first-seen order (case-insensitive)."""
+    people, seen = [], set()
+    for p in profiles:
+        nm = p.get("name", "?")
+        if nm.lower() not in seen:
+            seen.add(nm.lower())
+            people.append(nm)
+    return people
+
+
+def save_profile(result):
+    quiz_title = QUIZ_TITLES.get(result["quiz"], result["quiz"])
+    profiles = load_profiles()
+    people = people_list(profiles)
+
+    # Choose which profile to save onto: an existing one, or a new one.
+    if people:
+        print(f"\n{CYAN}save this {quiz_title} result to:{RESET}")
+        for i, nm in enumerate(people, 1):
+            taken = [QUIZ_TITLES.get(p.get("quiz", "attachment"))
+                     for p in profiles if p.get("name", "").lower() == nm.lower()]
+            print(f"  {AMBER}[{i}]{RESET} {nm}  {DIM}({', '.join(taken)}){RESET}")
+        print(f"  {AMBER}[N]{RESET} new profile")
+        print(f"  {AMBER}[C]{RESET} cancel")
+        sel = ask_line("> ").strip().lower()
+        if sel in ("c", ""):
+            print(f"{DIM}cancelled — not saved.{RESET}")
+            return
+        if sel == "n":
+            name = ask_line(f"{DIM}new profile name (blank to cancel):{RESET} ")
+        elif sel.isdigit() and 1 <= int(sel) <= len(people):
+            name = people[int(sel) - 1]
+        else:
+            print(f"{DIM}not a valid choice — not saved.{RESET}")
+            return
+    else:
+        print(f"\n{CYAN}save this {quiz_title} result{RESET}")
+        name = ask_line(f"{DIM}new profile name (blank to cancel):{RESET} ")
+
+    if not name:
+        print(f"{DIM}cancelled — not saved.{RESET}")
+        return
+
+    # Replace an existing result of the same quiz for this person.
+    existing = next((p for p in profiles if p.get("name", "").lower() == name.lower()
+                     and p.get("quiz", "attachment") == result["quiz"]), None)
+    verb = "saved"
+    if existing:
+        profiles.remove(existing)
+        verb = "updated"
+    entry = {"name": name, "saved_at": datetime.now().strftime("%Y-%m-%dT%H:%M:%S")}
+    entry.update(result)
+    profiles.append(entry)
+    write_profiles(profiles)
+    print(f"{GREEN}{verb} {quiz_title} for '{name}' → {profiles_path()}{RESET}")
+
+
+QUIZ_KEYS = ["attachment", "love", "bigfive", "darktriad", "mbti", "rice"]
+QUIZ_TITLES = {"attachment": "Attachment Style", "love": "Love Language",
+               "bigfive": "Big Five", "darktriad": "Dark Triad", "mbti": "Personality Type",
+               "rice": "Rice Purity"}
+
+
+def profile_love_scores(p):
+    answers = p.get("answers")
+    if isinstance(answers, list) and len(answers) == len(LOVE_QUESTIONS) and all(answers):
+        return love_compute(answers)
+    stored = p.get("scores")
+    if isinstance(stored, dict):
+        return {k: int(stored.get(k, 0)) for k in LOVE_KEYS}
+    return {k: 0 for k in LOVE_KEYS}
+
+
+def big5_scores_of(p):
+    a = p.get("answers")
+    if isinstance(a, list) and len(a) == len(BIG5_QUESTIONS) and all(v is not None for v in a):
+        return big5_compute(a)
+    stored = p.get("pct") or {}
+    return {f: int(stored.get(f, 0)) for f in BIG5_FACTORS}
+
+
+def dt_scores_of(p):
+    a = p.get("answers")
+    if isinstance(a, list) and len(a) == len(DT_QUESTIONS) and all(v is not None for v in a):
+        return dt_compute(a)
+    mean = p.get("mean") or {}
+    pct = p.get("pct") or {}
+    return ({t: float(mean.get(t, 0)) for t in DT_TRAITS},
+            {t: int(pct.get(t, 0)) for t in DT_TRAITS})
+
+
+def mbti_res_of(p):
+    a = p.get("answers")
+    if isinstance(a, list) and len(a) == len(MBTI_QUESTIONS) and all(v is not None for v in a):
+        return mbti_compute(a)
+    axes = p.get("axes") or {}
+    full = p.get("full") or p.get("type", "----")
+    norm = {ax: (axes.get(ax, ["?", 0])[0], axes.get(ax, ["?", 0])[1]) for ax in MBTI_AXES}
+    return {"type": p.get("type") or full[:4], "full": full, "axes": norm}
+
+
+def rice_score_of(p):
+    a = p.get("answers")
+    if isinstance(a, list) and len(a) == len(RICE_QUESTIONS):
+        return rice_compute(a)[0]
+    return int(p.get("score", 0))
+
+
+def entry_summary(p):
+    q = p.get("quiz", "attachment")
+    if q == "love":
+        return "Love", LOVE_NAMES.get(love_primary(profile_love_scores(p))[0], "?")
+    if q == "bigfive":
+        pct = big5_scores_of(p)
+        top = max(pct, key=pct.get)
+        return "Big Five", "High " + BIG5_INFO[top][0]
+    if q == "darktriad":
+        _, pct = dt_scores_of(p)
+        top = max(pct, key=pct.get)
+        return "Dark Triad", "High " + DT_INFO[top][0]
+    if q == "mbti":
+        return "Type", p.get("full") or p.get("type", "?")
+    if q == "rice":
+        return "Rice Purity", f"Purity {rice_score_of(p)}"
+    return "Attachment", STYLES.get(p.get("style", "secure"), ("?",))[0]
+
+
+def answer_rows(quiz, answers):
+    """Returns a list of (question, answer-label) pairs for a recorded result."""
+    if quiz == "rice":
+        return [(t, "Yes" if answers[i] else "No") for i, t in enumerate(RICE_QUESTIONS)]
+    if quiz == "love":
+        rows = []
+        for i, (la, ta, lb, tb) in enumerate(LOVE_QUESTIONS):
+            rows.append(("It's more meaningful to me when…", ta if answers[i] == la else tb))
+        return rows
+    texts = {
+        "attachment": [q[0] for q in ATTACH_QUESTIONS],
+        "bigfive": [q[2] for q in BIG5_QUESTIONS],
+        "darktriad": [q[2] for q in DT_QUESTIONS],
+        "mbti": [q[2] for q in MBTI_QUESTIONS],
+    }.get(quiz, [])
+    return [(t, SCALE[answers[i] - 1] if answers[i] else "—") for i, t in enumerate(texts)]
+
+
+def show_answers(profile):
+    quiz = profile.get("quiz", "attachment")
+    answers = profile.get("answers")
+    if not isinstance(answers, list):
+        print(f"\n{DIM}(no recorded answers for this result){RESET}")
+        print(f"\n{DIM}press any key to go back{RESET}")
+        getch()
+        return
+    print(f"\n{CYAN}── answers · {QUIZ_TITLES.get(quiz, quiz)} ──{RESET}\n")
+    for i, (q, a) in enumerate(answer_rows(quiz, answers), 1):
+        print(f"{DIM}{i:>3}.{RESET} {q}")
+        print(f"      {GREEN}{a}{RESET}")
+    print(f"\n{DIM}press any key to go back{RESET}")
+    getch()
+
+
+def show_saved(profile):
+    q = profile.get("quiz", "attachment")
+    title = f"{profile.get('name', '?')} · {QUIZ_TITLES.get(q, q)}  ({profile.get('saved_at', '')[:10]})"
+    if q == "love":
+        render_love(profile_love_scores(profile), title=title)
+    elif q == "bigfive":
+        render_bigfive(big5_scores_of(profile), title=title)
+    elif q == "darktriad":
+        mean, pct = dt_scores_of(profile)
+        render_darktriad(mean, pct, title=title)
+    elif q == "mbti":
+        render_mbti(mbti_res_of(profile), title=title)
+    elif q == "rice":
+        score = rice_score_of(profile)
+        render_rice(score, 100 - score, title=title)
+    else:
+        answers = profile.get("answers")
+        if isinstance(answers, list) and len(answers) == len(ATTACH_QUESTIONS) and all(answers):
+            anxiety, avoidance = attach_compute(answers)
+            style_key = attach_classify(anxiety, avoidance)
+        else:
+            anxiety = float(profile.get("anxiety", 0))
+            avoidance = float(profile.get("avoidance", 0))
+            style_key = profile.get("style") or attach_classify(anxiety, avoidance)
+        render_attachment(anxiety, avoidance, style_key, title=title)
+    print(f"\n{DIM}press [A] to see answers · any other key to go back{RESET}")
+    if getch().lower() == "a":
+        show_answers(profile)
+
+
+def view_profiles():
+    """Browse saved results grouped by person. Numbering runs across the
+    whole list; entries are shown under each person's name."""
+    while True:
+        profiles = load_profiles()
+        print(f"\n{CYAN}── saved profiles ──{RESET}\n")
+        if not profiles:
+            print(f"{DIM}(none saved yet — take a quiz and press [S] to save one){RESET}")
+            print(f"\n{DIM}press [B] to go back{RESET}")
+            while getch().lower() != "b":
+                pass
+            return
+        # group by name, preserving first-seen order; map display number -> index
+        order, groups = [], {}
+        for idx, p in enumerate(profiles):
+            key = p.get("name", "?").lower()
+            if key not in groups:
+                groups[key] = (p.get("name", "?"), [])
+                order.append(key)
+            groups[key][1].append((idx, p))
+        num_to_idx, n = {}, 0
+        for key in order:
+            display, items = groups[key]
+            print(f"{BOLD}{display}{RESET}")
+            for idx, p in items:
+                n += 1
+                num_to_idx[n] = idx
+                kind, label = entry_summary(p)
+                print(f"  {AMBER}{n}){RESET} {DIM}{kind:<12}{RESET} {label:<22} "
+                      f"{DIM}{p.get('saved_at', '')[:10]}{RESET}")
+            taken = {p.get("quiz", "attachment") for _, p in items}
+            missing = [QUIZ_TITLES[q] for q in QUIZ_KEYS if q not in taken]
+            if missing:
+                print(f"     {DIM}not yet taken: {', '.join(missing)}{RESET}")
+            print()
+        print(f"{DIM}enter a # to view · [D] delete a # · [B] back{RESET}")
+        sel = ask_line("> ").lower()
+        if sel in ("b", ""):
+            return
+        if sel == "d":
+            d = ask_line(f"{DIM}delete which # (blank to cancel):{RESET} ")
+            if d.isdigit() and int(d) in num_to_idx:
+                victim = profiles[num_to_idx[int(d)]]
+                kind, label = entry_summary(victim)
+                print(f"{AMBER}delete {victim.get('name', '?')}'s {kind} result? [y/N]{RESET}")
+                if getch().lower() == "y":
+                    profiles.pop(num_to_idx[int(d)])
+                    write_profiles(profiles)
+                    print(f"{DIM}deleted.{RESET}")
+            else:
+                print(f"{DIM}nothing deleted.{RESET}")
+        elif sel.isdigit() and int(sel) in num_to_idx:
+            show_saved(profiles[num_to_idx[int(sel)]])
+
+
+# ════════════════════════════════════════════════════════════════════════
+#  MENU
+# ════════════════════════════════════════════════════════════════════════
+def print_banner():
+    print(f"""{CYAN}┌──────────────────────────────────────────────┐
+│      PERSONALITY & RELATIONSHIP QUIZZES      │
+└──────────────────────────────────────────────┘{RESET}
+""")
+
+
+def people_count():
+    return len({p.get("name", "?").lower() for p in load_profiles()})
+
+
+def main():
+    clear()
+    print_banner()
+    print(f"{DIM}Educational self-reflection tools, not clinical or professional advice.\n"
+          f"Save each result onto a named profile to build a full picture of someone.{RESET}\n")
+    while True:
+        n = people_count()
+        plural = "profile" if n == 1 else "profiles"
+        print(f"{DIM}─────────────────────────────────────────────{RESET}")
+        print(f"  {AMBER}[1]{RESET} Attachment Style  {DIM}— 24 q · anxiety/avoidance → 4 styles{RESET}")
+        print(f"  {AMBER}[2]{RESET} Love Language     {DIM}— 30 q · your top love language{RESET}")
+        print(f"  {AMBER}[3]{RESET} Big Five (OCEAN)  {DIM}— 50 q · five core personality dimensions{RESET}")
+        print(f"  {AMBER}[4]{RESET} Dark Triad        {DIM}— 27 q · Mach / narcissism / psychopathy{RESET}")
+        print(f"  {AMBER}[5]{RESET} Personality Type  {DIM}— 30 q · 4-letter type + identity{RESET}")
+        print(f"  {AMBER}[6]{RESET} Rice Purity       {DIM}— 100 q · lighthearted purity score out of 100{RESET}")
+        print(f"  {AMBER}[V]{RESET} view saved profiles {DIM}({n} {plural}){RESET}")
+        print(f"  {AMBER}[Q]{RESET} quit")
+        print(f"\n{DIM}choose a quiz...{RESET}")
+        ch = getch().lower()
+        if ch == "1":
+            run_attachment()
+        elif ch == "2":
+            run_love()
+        elif ch == "3":
+            run_bigfive()
+        elif ch == "4":
+            run_darktriad()
+        elif ch == "5":
+            run_mbti()
+        elif ch == "6":
+            run_rice()
+        elif ch == "v":
+            view_profiles()
+        elif ch == "q":
+            print(f"{DIM}bye.{RESET}")
+            return
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except (KeyboardInterrupt, EOFError):
+        print(f"\n{DIM}interrupted — bye.{RESET}")
+        sys.exit(130)
