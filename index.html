@@ -121,6 +121,10 @@
   .person-name { font-weight: 700; font-size: 1.05rem; }
   .person-del { background: none; border: none; color: var(--muted); font-size: 0.8rem; cursor: pointer; }
   .person-del:hover { color: var(--c4); text-decoration: underline; }
+  .person-actions { display: flex; gap: 14px; align-items: center; }
+  .person-copy { background: none; border: none; color: var(--accent); font-size: 0.8rem; font-weight: 600; cursor: pointer; }
+  .person-copy:hover { text-decoration: underline; }
+  .json-out { width: 100%; height: 240px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.78rem; line-height: 1.45; border: 1px solid var(--line); border-radius: 8px; padding: 10px; resize: vertical; white-space: pre; box-sizing: border-box; }
   .res-row { display: flex; align-items: center; gap: 12px; padding: 9px 2px; border-top: 1px solid var(--line); }
   .res-main { flex: 1; min-width: 0; cursor: pointer; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
   .res-main:hover .res-label { text-decoration: underline; }
@@ -1061,9 +1065,14 @@ function showProfiles(){
     const card=document.createElement("div"); card.className="person";
     const head=document.createElement("div"); head.className="person-head";
     head.innerHTML='<span class="person-name">'+escapeHtml(group.name)+'</span>';
+    const actions=document.createElement("div"); actions.className="person-actions";
+    const copyBtn=document.createElement("button"); copyBtn.className="person-copy"; copyBtn.textContent="Copy JSON";
+    copyBtn.title="Copy this profile as JSON to paste into ChatGPT";
+    copyBtn.onclick=()=>copyProfileJSON(group.name);
     const delAll=document.createElement("button"); delAll.className="person-del"; delAll.textContent="Delete profile";
     delAll.onclick=()=>deletePerson(group.name);
-    head.appendChild(delAll); card.appendChild(head);
+    actions.appendChild(copyBtn); actions.appendChild(delAll);
+    head.appendChild(actions); card.appendChild(head);
 
     const taken=new Set();
     group.items.forEach(({p,idx})=>{
@@ -1110,6 +1119,59 @@ function deletePerson(name){
   openDialog({ title:"Delete profile?", message:"“"+name+"” and all its saved results will be permanently removed.",
     confirmLabel:"Delete", cancelLabel:"Cancel", danger:true,
     onConfirm:()=>{ const a=loadProfiles().filter(p=>(p.name||"").toLowerCase()!==name.toLowerCase()); writeProfiles(a); showProfiles(); } });
+}
+
+// ════════════════════════════════════════════════════════════════════
+//  COPY A PROFILE AS JSON  (for pasting into ChatGPT / any LLM)
+// ════════════════════════════════════════════════════════════════════
+// Readable computed scores for one saved entry (names spelled out, not codes).
+function analysisDetail(p){
+  const q=p.quiz||"attachment"; const r=QUIZ_RESULT[q].fromEntry(p);
+  if(q==="love"){ const s=r.scores||{}; const top=lovePrimary(s)[0];
+    return { primary_language:LOVE_NAMES[top], scores:Object.fromEntries(LOVE_KEYS.map(k=>[LOVE_NAMES[k], s[k]||0])) }; }
+  if(q==="bigfive"){ return { percentiles:Object.fromEntries(BIG5_FACTORS.map(f=>[BIG5_INFO[f].name, r.pct[f]||0])) }; }
+  if(q==="darktriad"){ return { mean_1to5:Object.fromEntries(DT_TRAITS.map(t=>[DT_INFO[t].name, round2(r.mean[t]||0)])),
+    percentiles:Object.fromEntries(DT_TRAITS.map(t=>[DT_INFO[t].name, r.pct[t]||0])) }; }
+  if(q==="mbti"){ return { type:r.full, axes:Object.fromEntries(Object.keys(r.axes||{}).map(ax=>[ax,{letter:r.axes[ax].letter, lean_pct:r.axes[ax].lean}])) }; }
+  if(q==="rice"){ return { purity_score:r.score, items_done:r.yes }; }
+  return { style:STYLES[r.style].name, anxiety:round2(r.anxiety), avoidance:round2(r.avoidance) };
+}
+function buildProfileAnalysis(name){
+  const lc=name.toLowerCase();
+  const entries=loadProfiles().filter(p=>(p.name||"").toLowerCase()===lc);
+  const quizzes=entries.map(p=>{
+    const q=p.quiz||"attachment";
+    let rows=[]; try{ rows=answerRows(q, p.answers||[]); }catch(e){ rows=[]; }
+    return { quiz:QUIZZES[q].title, saved_at:p.saved_at||null, result:analysisDetail(p),
+      answers:rows.map((row,i)=>({n:i+1, question:row.q, answer:row.a})) };
+  });
+  return {
+    profile: entries.length?entries[0].name:name,
+    source: "Sarah personality & relationship quiz suite",
+    instructions_for_analysis: "Below are this person's self-reflection quiz results, each with computed scores and their individual answers. Please analyze their personality, relationship style, strengths, blind spots, and how the results fit together.",
+    quizzes
+  };
+}
+async function copyProfileJSON(name){
+  const json=JSON.stringify(buildProfileAnalysis(name), null, 2);
+  try{
+    await navigator.clipboard.writeText(json);
+    toast("Copied "+name+"’s profile as JSON — paste into ChatGPT.");
+  }catch(e){ showJSONModal(name, json); }
+}
+function showJSONModal(name, json){
+  const backdrop=document.createElement("div"); backdrop.className="modal-backdrop";
+  const box=document.createElement("div"); box.className="modal";
+  box.innerHTML='<h3>'+escapeHtml(name)+'’s profile (JSON)</h3>'+
+    '<p class="result-sub" style="margin:0 0 10px">Copy this and paste it into ChatGPT for analysis.</p>'+
+    '<textarea readonly class="json-out"></textarea>'+
+    '<div class="modal-actions"><button class="text-btn" id="json-close">Close</button><button class="primary-btn" id="json-copy">Copy</button></div>';
+  backdrop.appendChild(box); document.body.appendChild(backdrop);
+  const ta=box.querySelector(".json-out"); ta.value=json;
+  box.querySelector("#json-close").onclick=()=>backdrop.remove();
+  box.querySelector("#json-copy").onclick=()=>{ ta.select(); try{ document.execCommand("copy"); toast("Copied."); }catch(e){} };
+  backdrop.onclick=e=>{ if(e.target===backdrop) backdrop.remove(); };
+  ta.focus(); ta.select();
 }
 
 // ════════════════════════════════════════════════════════════════════

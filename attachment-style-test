@@ -15,6 +15,7 @@ format the web version exports/imports, so the two can share profiles.
 import getpass
 import json
 import os
+import subprocess
 import sys
 import time
 import urllib.error
@@ -1308,6 +1309,101 @@ def answer_rows(quiz, answers):
     return [(t, SCALE[answers[i] - 1] if answers[i] else "—") for i, t in enumerate(texts)]
 
 
+def profile_result_detail(p):
+    """Readable computed scores for one saved entry, JSON-friendly."""
+    q = p.get("quiz", "attachment")
+    if q == "love":
+        s = profile_love_scores(p)
+        primary = love_primary(s)[0]
+        return {"primary_language": LOVE_NAMES.get(primary, primary),
+                "scores": {LOVE_NAMES.get(k, k): s.get(k, 0) for k in LOVE_KEYS}}
+    if q == "bigfive":
+        pct = big5_scores_of(p)
+        return {"percentiles": {BIG5_INFO[f][0]: pct.get(f, 0) for f in BIG5_FACTORS}}
+    if q == "darktriad":
+        mean, pct = dt_scores_of(p)
+        return {"mean_1to5": {DT_INFO[t][0]: round(mean.get(t, 0), 2) for t in DT_TRAITS},
+                "percentiles": {DT_INFO[t][0]: pct.get(t, 0) for t in DT_TRAITS}}
+    if q == "mbti":
+        res = mbti_res_of(p)
+        return {"type": res["full"],
+                "axes": {ax: {"letter": res["axes"][ax][0], "lean_pct": res["axes"][ax][1]}
+                         for ax in res["axes"]}}
+    if q == "rice":
+        score = rice_score_of(p)
+        return {"purity_score": score, "items_done": 100 - score}
+    answers = p.get("answers")
+    if isinstance(answers, list) and len(answers) == len(ATTACH_QUESTIONS) and all(answers):
+        anxiety, avoidance = attach_compute(answers)
+        style = attach_classify(anxiety, avoidance)
+    else:
+        anxiety = float(p.get("anxiety", 0))
+        avoidance = float(p.get("avoidance", 0))
+        style = p.get("style") or attach_classify(anxiety, avoidance)
+    return {"style": STYLES.get(style, ("?",))[0],
+            "anxiety": round(anxiety, 2), "avoidance": round(avoidance, 2)}
+
+
+def build_profile_analysis(name):
+    """A full per-person profile (all quizzes, scores + answers) for an LLM."""
+    lc = name.lower()
+    entries = [p for p in load_profiles() if p.get("name", "").lower() == lc]
+    quizzes = []
+    for p in entries:
+        q = p.get("quiz", "attachment")
+        answers = p.get("answers")
+        try:
+            rows = answer_rows(q, answers) if isinstance(answers, list) else []
+        except Exception:
+            rows = []
+        quizzes.append({
+            "quiz": QUIZ_TITLES.get(q, q),
+            "saved_at": p.get("saved_at"),
+            "result": profile_result_detail(p),
+            "answers": [{"n": i, "question": qq, "answer": aa}
+                        for i, (qq, aa) in enumerate(rows, 1)],
+        })
+    return {
+        "profile": entries[0].get("name", name) if entries else name,
+        "source": "Sarah personality & relationship quiz suite",
+        "instructions_for_analysis": (
+            "Below are this person's self-reflection quiz results, each with computed "
+            "scores and their individual answers. Please analyze their personality, "
+            "relationship style, strengths, blind spots, and how the results fit together."),
+        "quizzes": quizzes,
+    }
+
+
+def copy_to_clipboard(text):
+    """Put text on the system clipboard. Returns the tool used, or None."""
+    if sys.platform == "darwin":
+        cmds = [["pbcopy"]]
+    elif sys.platform.startswith("win"):
+        cmds = [["clip"]]
+    else:
+        cmds = [["wl-copy"], ["xclip", "-selection", "clipboard"],
+                ["xsel", "--clipboard", "--input"]]
+    for cmd in cmds:
+        try:
+            subprocess.run(cmd, input=text.encode("utf-8"), check=True)
+            return cmd[0]
+        except (FileNotFoundError, OSError, subprocess.CalledProcessError):
+            continue
+    return None
+
+
+def copy_profile_json(name):
+    text = json.dumps(build_profile_analysis(name), indent=2, ensure_ascii=False)
+    if copy_to_clipboard(text):
+        print(f"\n{GREEN}copied {name}'s full profile as JSON to the clipboard "
+              f"— paste it into ChatGPT for analysis.{RESET}")
+    else:
+        print(f"\n{DIM}couldn't reach the clipboard — here's the JSON to copy manually:{RESET}\n")
+        print(text)
+    print(f"\n{DIM}press any key to go back{RESET}")
+    getch()
+
+
 def show_answers(profile):
     quiz = profile.get("quiz", "attachment")
     answers = profile.get("answers")
@@ -1349,9 +1445,13 @@ def show_saved(profile):
             avoidance = float(profile.get("avoidance", 0))
             style_key = profile.get("style") or attach_classify(anxiety, avoidance)
         render_attachment(anxiety, avoidance, style_key, title=title)
-    print(f"\n{DIM}press [A] to see answers · any other key to go back{RESET}")
-    if getch().lower() == "a":
+    print(f"\n{DIM}press [A] answers · [J] copy this person's profile as JSON · "
+          f"any other key to go back{RESET}")
+    k = getch().lower()
+    if k == "a":
         show_answers(profile)
+    elif k == "j":
+        copy_profile_json(profile.get("name", "?"))
 
 
 def view_profiles():
@@ -1389,10 +1489,19 @@ def view_profiles():
             if missing:
                 print(f"     {DIM}not yet taken: {', '.join(missing)}{RESET}")
             print()
-        print(f"{DIM}enter a # to view · [D] delete a # · [B] back{RESET}")
+        print(f"{DIM}enter a # to view · [J] copy a profile as JSON · "
+              f"[D] delete a # · [B] back{RESET}")
         sel = ask_line("> ").lower()
         if sel in ("b", ""):
             return
+        if sel == "j":
+            d = ask_line(f"{DIM}copy whose profile — enter any of their #s "
+                         f"(blank to cancel):{RESET} ")
+            if d.isdigit() and int(d) in num_to_idx:
+                copy_profile_json(profiles[num_to_idx[int(d)]].get("name", "?"))
+            else:
+                print(f"{DIM}nothing copied.{RESET}")
+            continue
         if sel == "d":
             d = ask_line(f"{DIM}delete which # (blank to cancel):{RESET} ")
             if d.isdigit() and int(d) in num_to_idx:

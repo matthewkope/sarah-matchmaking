@@ -22,6 +22,12 @@ is copyrighted/proprietary). None are affiliated with the original tests.
 After any result — fresh or saved — you can **View answers** (web) or press **[A]** (terminal)
 to see every question alongside the answer you gave, since each profile records its answers.
 
+**Copy a profile as JSON for AI analysis:** on the saved-profiles screen, each person has a
+**Copy JSON** button (web) — or press **[J]** in the terminal — that copies that person's whole
+profile (every quiz they've taken, with computed scores *and* their individual answers) to your
+clipboard as JSON. Paste it into ChatGPT or any LLM and ask for an analysis. If the clipboard
+isn't reachable, both versions show/print the JSON so you can copy it by hand.
+
 ## Running the terminal version
 
 ```bash
