@@ -137,10 +137,6 @@
   .modal input:focus { outline: none; border-color: var(--accent); }
   .modal .modal-error { color: var(--c4); font-size: 0.82rem; min-height: 1.1em; margin-bottom: 8px; }
   .modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 6px; }
-  .auth-google { width: 100%; display: flex; align-items: center; justify-content: center; gap: 10px; margin-bottom: 6px; }
-  .g-logo { display: inline-grid; place-items: center; width: 18px; height: 18px; border-radius: 50%; background: #fff; border: 1px solid var(--line); color: #4285F4; font-weight: 800; font-size: 0.8rem; }
-  .auth-or { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 0.8rem; margin: 12px 0; }
-  .auth-or::before, .auth-or::after { content: ""; flex: 1; height: 1px; background: var(--line); }
 
   .hidden { display: none; }
   @media (max-width: 480px) { .card { padding: 20px; } .question-text { font-size: 1.05rem; } .typecode { font-size: 2rem; } }
@@ -698,8 +694,6 @@ function openAuthModal(){
   const backdrop=document.createElement("div"); backdrop.className="modal-backdrop";
   backdrop.innerHTML='<div class="modal"><h3 id="auth-title">Sign in</h3>'+
     '<p id="auth-sub">Sign in to sync your profiles across devices and the CLI.</p>'+
-    '<button class="ghost-btn auth-google" id="auth-google"><span class="g-logo">G</span> Continue with Google</button>'+
-    '<div class="auth-or"><span>or use email</span></div>'+
     '<input id="auth-email" type="email" placeholder="you@example.com" autocomplete="username">'+
     '<input id="auth-pw" type="password" placeholder="password (min 6 chars)" autocomplete="current-password">'+
     '<div class="modal-error" id="auth-error"></div>'+
@@ -725,11 +719,6 @@ function openAuthModal(){
       if(mode==="signup" && !data.session){ $("auth-error").textContent="Account created — check your email for a confirmation link, then sign in."; setMode("signin"); $("auth-go").disabled=false; return; }
       close(); toast(mode==="signin"?"Signed in.":"Account created — synced.");
     }catch(err){ $("auth-error").textContent=err.message||"Authentication failed."; $("auth-go").disabled=false; }
-  };
-  $("auth-google").onclick=async()=>{
-    $("auth-error").textContent="Redirecting to Google…";
-    const { error } = await sb.auth.signInWithOAuth({ provider:"google", options:{ redirectTo: window.location.origin + window.location.pathname } });
-    if(error) $("auth-error").textContent=error.message;
   };
   $("auth-toggle").onclick=()=>setMode(mode==="signin"?"signup":"signin");
   $("auth-go").onclick=go;

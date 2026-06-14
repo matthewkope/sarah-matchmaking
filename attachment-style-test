@@ -12,20 +12,13 @@ Profiles are saved to profiles.json next to this script, in the same JSON
 format the web version exports/imports, so the two can share profiles.
 """
 
-import base64
 import getpass
-import hashlib
-import http.server
 import json
 import os
-import secrets
-import socket
 import sys
 import time
 import urllib.error
-import urllib.parse
 import urllib.request
-import webbrowser
 from collections import Counter
 from datetime import datetime
 
@@ -844,7 +837,6 @@ def write_profiles(profiles):
 #  data private. No secret key is stored anywhere.)
 # ════════════════════════════════════════════════════════════════════════
 SUPABASE_URL = "https://pbevmvhslsdknbmaeenc.supabase.co"
-SITE_URL = "https://sarah-matchmaking.vercel.app"
 SUPABASE_ANON = ("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6"
                  "InBiZXZtdmhzbHNka25ibWFlZW5jIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODEzNzU5NTgs"
                  "ImV4cCI6MjA5Njk1MTk1OH0.qIMIxSi0C2b74BezDhMttFluPpH6ZOjm1ul3mfEiSZU")
@@ -959,100 +951,6 @@ def cloud_pull(token):
     if status == 200 and isinstance(data, list):
         return [r.get("payload") for r in data if r.get("payload")], None
     return None, (data or {}).get("message", f"HTTP {status}")
-
-
-# Browser-based sign-in (the loopback flow `gh`/`vercel`/`gcloud` use): start a
-# temporary local web server, open the browser to the provider, and catch the
-# redirect back. Lets Google (and any OAuth provider) sign in from the terminal.
-OAUTH_PORTS = [8910, 8911, 8912]
-
-
-def _free_port(ports):
-    for p in ports:
-        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        try:
-            s.bind(("127.0.0.1", p))
-            return p
-        except OSError:
-            continue
-        finally:
-            s.close()
-    return None
-
-
-def _pkce_pair():
-    verifier = base64.urlsafe_b64encode(secrets.token_bytes(64)).rstrip(b"=").decode()
-    challenge = base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).rstrip(b"=").decode()
-    return verifier, challenge
-
-
-def cloud_login_browser():
-    """Open the branded Sarah sign-in page in the browser (Google or email) and
-    catch the session it hands back to this local listener."""
-    port = _free_port(OAUTH_PORTS)
-    if port is None:
-        return False, f"no free local port (tried {OAUTH_PORTS}); close other apps and retry"
-    box = {}
-
-    done_html = (b"<!doctype html><meta charset=utf-8><body style='font-family:sans-serif;"
-                 b"text-align:center;padding-top:48px;color:#2b2b33'>"
-                 b"<h2>Signed in to Sarah \xe2\x9c\x93</h2>"
-                 b"<p>You can close this tab and return to your terminal.</p></body>")
-
-    class Handler(http.server.BaseHTTPRequestHandler):
-        def do_GET(self):
-            qs = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
-            self.send_response(200)
-            self.send_header("Content-Type", "text/html")
-            self.end_headers()
-            if "access_token" in qs:
-                box["access_token"] = qs["access_token"][0]
-                box["refresh_token"] = qs.get("refresh_token", [None])[0]
-                box["expires_in"] = qs.get("expires_in", ["3600"])[0]
-                self.wfile.write(done_html)
-            elif "error" in qs or "error_description" in qs:
-                box["error"] = qs.get("error_description", qs.get("error", ["sign-in failed"]))[0]
-                self.wfile.write(b"<!doctype html><body>Sign-in failed; you can close this tab.</body>")
-            else:
-                # the page forwards tokens in the URL fragment (#...), which servers
-                # can't see; this rewrites them into the query string so we capture them.
-                self.wfile.write(b"<!doctype html><body><script>"
-                                 b"if(location.hash.length>1){location.replace(location.pathname+'?'+location.hash.slice(1));}"
-                                 b"else{document.write('Waiting\\u2026');}</script></body>")
-
-        def log_message(self, *a):
-            pass
-
-    srv = http.server.HTTPServer(("127.0.0.1", port), Handler)
-    srv.timeout = 1
-    url = f"{SITE_URL}/cli.html?port={port}"
-    print(f"{DIM}Opening your browser to sign in (Google or email)…{RESET}")
-    print(f"{DIM}If it doesn't open, paste this URL into a browser:{RESET}\n{url}\n")
-    try:
-        webbrowser.open(url)
-    except Exception:
-        pass
-    deadline = time.time() + 180
-    try:
-        while time.time() < deadline and not (box.get("access_token") or box.get("error")):
-            srv.handle_request()
-    finally:
-        srv.server_close()
-
-    if box.get("error"):
-        return False, box["error"]
-    if not box.get("access_token"):
-        return False, "timed out waiting for sign-in (no response received)"
-    try:
-        expires_in = int(box.get("expires_in") or 3600)
-    except ValueError:
-        expires_in = 3600
-    creds = {"access_token": box["access_token"], "refresh_token": box.get("refresh_token"),
-             "expires_at": time.time() + expires_in}
-    st, user = _api("GET", "/auth/v1/user", token=box["access_token"])
-    creds["email"] = (user or {}).get("email") if st == 200 else None
-    save_creds(creds)
-    return True, None
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -1545,19 +1443,14 @@ def cloud_menu():
             print(f"  {AMBER}[O]{RESET} sign out")
         else:
             print(f"{DIM}not signed in — results save locally only.{RESET}\n")
-            print(f"  {AMBER}[S]{RESET} sign in {DIM}(opens a browser page — Google or email){RESET}")
-            print(f"  {AMBER}[I]{RESET} sign in with email & password in the terminal")
+            print(f"  {AMBER}[I]{RESET} sign in with email & password")
         print(f"  {AMBER}[B]{RESET} back")
         print(f"\n{DIM}choose...{RESET}")
         ch = getch().lower()
         if ch == "b":
             return
         if not token:
-            if ch == "s":
-                ok, err = cloud_login_browser()
-                print(f"{GREEN}signed in as {cloud_email() or 'your account'}{RESET}" if ok
-                      else f"{AMBER}sign-in failed: {err}{RESET}")
-            elif ch == "i":
+            if ch == "i":
                 do_cloud_login()
             continue
         if ch == "o":

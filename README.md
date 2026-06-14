@@ -103,20 +103,15 @@ the terminal's `profiles.json`. (`profiles.json` is personal data and is git-ign
 Both the website and the CLI can sign in to one account so your profiles sync across devices
 and between the two apps. It's backed by [Supabase](https://supabase.com) (Postgres + Auth):
 
-- **Website:** the account bar under the title → *Sign in / Sign up*, via **Continue with
-  Google** or email + password. New email signups must **confirm their address** (click the
-  link Supabase emails) before signing in. While signed in, every save writes to your account
-  and your profiles load on any device; signed out, it stays local.
-- **CLI:** menu option **[C] cloud sync** → **[S] sign in** opens a **branded Sarah sign-in
-  page** ([`cli.html`](cli.html)) in your browser with both **Google and email** (the
-  `gh`/`vercel`/Toggl loopback pattern); after you sign in there, the page hands the session
-  back to the waiting terminal. **[I]** also offers email/password typed directly in the
-  terminal. After signing in, saving a result **auto-pushes** it; **[U]** uploads all local
+- **Website:** the account bar under the title → *Sign in / Sign up* with **email + password**.
+  New signups must **confirm their address** (click the link Supabase emails) before signing in.
+  While signed in, every save writes to your account and your profiles load on any device, and
+  pages render instantly from a local snapshot that refreshes in the background; signed out, it
+  stays local.
+- **CLI:** menu option **[C] cloud sync** → **[I] sign in** with email + password (typed in the
+  terminal). After signing in, saving a result **auto-pushes** it; **[U]** uploads all local
   profiles and **[D]** downloads cloud ones. The token is stored in `~/.sarah/credentials.json`
   (chmod 600).
-  - The browser hands the session back to `http://localhost:8910–8912`. These are plain local
-    redirects (not Supabase OAuth redirects), so they don't need to be in the Supabase
-    allowlist; only `https://sarah-matchmaking.vercel.app/**` does (it hosts `cli.html`).
 - **Privacy:** data is per-account and protected by Postgres **Row-Level Security** — you only
   ever see your own rows. The app uses the public **anon** key (safe to ship); the secret
   `service_role` key is never used by any client.
